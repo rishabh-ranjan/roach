@@ -15,3 +15,7 @@ dependencies = [
 	"torch",
 	"tqdm",
 ]
+
+[tool.flit.module]
+name = "roach"
+
