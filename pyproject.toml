@@ -1,0 +1,17 @@
+[build-system]
+requires = ["flit_core >=3.2,<4"]
+build-backend = "flit_core.buildapi"
+
+[project]
+name = "roach"
+version = "0.0.1"
+description = "."
+readme = "README.md"
+authors = [{name = "Rishabh Ranjan", email = "rishabhranjan0207@gmail.com"}]
+dependencies = [
+	"matplotlib",
+	"pandas",
+	"seaborn",
+	"torch",
+	"tqdm",
+]
