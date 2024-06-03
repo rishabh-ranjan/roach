@@ -9,6 +9,8 @@ description = "."
 readme = "README.md"
 authors = [{name = "Rishabh Ranjan", email = "rishabhranjan0207@gmail.com"}]
 dependencies = [
+	"colorama",
+	"fire",
 	"matplotlib",
 	"pandas",
 	"seaborn",
