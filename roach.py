@@ -1,10 +1,10 @@
 import os
 from pathlib import Path
+import signal
 import socket
 import subprocess
 import time
 
-from colorama import Fore, Style
 import fire
 import torch
 
@@ -16,22 +16,19 @@ class Store:
         Path(store_dir).mkdir(parents=True, exist_ok=True)
 
     def __setitem__(self, key, val):
-        path = f"{self.store_dir}/{key}.pt"
-        Path(path).parent.mkdir(parents=True, exist_ok=True)
-        torch.save(val, path)
+        store_file = f"{self.store_dir}/{key}.pt"
+        Path(store_file).parent.mkdir(parents=True, exist_ok=True)
+        torch.save(val, store_file)
 
     def __getitem__(self, key):
-        path = f"{self.store_dir}/{key}.pt"
-        return torch.load(path, map_location=self.device)
+        store_file = f"{self.store_dir}/{key}.pt"
+        return torch.load(store_file, map_location=self.device)
 
 
-store_root = "/lfs/local/0/ranjanr/stores"
-queue_root = "/lfs/local/0/ranjanr/queues"
-sleep_time = 1
 store = None
 
 
-def init(project):
+def init(project, store_root="/lfs/local/0/ranjanr/stores"):
     global store
     ts = time.time_ns()
     store_dir = f"{store_root}/{project}/{ts}"
@@ -42,74 +39,73 @@ def finish():
     store["done"] = True
 
 
-def submit(queue, cmd):
+def submit(queue, cmd, queue_root="/lfs/local/0/ranjanr/queues"):
     assert "\n" not in cmd
 
     ts = time.time_ns()
-    submit_path = f"{queue_root}/{queue}/ready/{ts}"
-    Path(submit_path).parent.mkdir(parents=True, exist_ok=True)
+    task_file = f"{queue_root}/{queue}/ready/{ts}"
+    Path(task_file).parent.mkdir(parents=True, exist_ok=True)
 
-    with open(submit_path, "w") as f:
+    with open(task_file, "w") as f:
         f.write(cmd)
         f.write("\n")
 
 
-def worker(queue):
+def worker(queue, sleep_time=1, queue_root="/lfs/local/0/ranjanr/queues"):
+    # make state dirs
+    queue_dir = f"{queue_root}/{queue}"
+    for state in ["ready", "active", "done", "failed"]:
+        state_dir = f"{queue_dir}/{state}"
+        Path(state_dir).mkdir(parents=True, exist_ok=True)
+
+    # worker name
     hostname = socket.gethostname()
     pid = os.getpid()
     gpus = os.environ.get("CUDA_VISIBLE_DEVICES")
     worker_name = f"{hostname}:{pid}:{gpus}"
-    prefix = f"[{worker_name}]"
 
-    queue_dir = f"{queue_root}/{queue}"
-    print(f"{prefix} queue at {queue_dir}")
-
+    # worker loop
     while True:
-        tasks = list(Path(f"{queue_dir}/ready").iterdir())
-
+        # select task
+        task_iter = Path(f"{queue_dir}/ready").iterdir()
         try:
-            ready_path = min(tasks)
+            task_file = min(task_iter)
         except ValueError:
             time.sleep(sleep_time)
             continue
+        task_name = Path(task_file).name
 
-        task_name = ready_path.name
+        # killing worker should move task back to ready dir
+        def handler(signum, frame):
+            task_file.rename(f"{queue_dir}/ready/{task_name}")
 
-        Path(f"{queue_dir}/active").mkdir(exist_ok=True)
+        # register handler before moving to active dir
+        signal.signal(signal.SIGTERM, handler)
+
+        # acquire task
         try:
-            active_path = ready_path.rename(f"{queue_dir}/active/{task_name}")
+            task_file = task_file.rename(f"{queue_dir}/active/{task_name}")
         except FileNotFoundError:
-            print(
-                f"{prefix} {Fore.YELLOW}failed to acquire task {task_name}{Style.RESET_ALL}"
-            )
-            time.sleep(SLEEP)
+            # task no longer exists
+            # maybe another worker acquired it
             continue
 
-        print(f"{prefix} {Fore.BLUE}acquired task {task_name}{Style.RESET_ALL}")
-
-        with open(active_path, "r") as f:
-            task_str = f.readline().strip()
-
+        # run task
+        with open(task_file, "r") as f:
+            # first line of task file is the shell command
+            # remove trailing newline
+            cmd = f.readline().strip()
         try:
-            with open(active_path, "a", buffering=1) as f:
+            # line buffering
+            with open(task_file, "a", buffering=1) as f:
                 f.write(f"\n=== {worker_name} ===\n")
-                subprocess.run(task_str, shell=True, stdout=f, stderr=f, check=True)
-
+                subprocess.run(cmd, shell=True, stdout=f, stderr=f, check=True)
         except subprocess.CalledProcessError:
-            Path(f"{queue_dir}/failed").mkdir(exist_ok=True)
-            failed_path = active_path.rename(f"{queue_dir}/failed/{task_name}")
-            print(f"{prefix} {Fore.RED}failed task {task_name}{Style.RESET_ALL}")
-
-        except KeyboardInterrupt:
-            Path(f"{queue_dir}/failed").mkdir(exist_ok=True)
-            failed_path = active_path.rename(f"{queue_dir}/failed/{task_name}")
-            print(f"{prefix} {Fore.RED}failed task {task_name}{Style.RESET_ALL}")
-            break
-
+            # task failed
+            task_file.rename(f"{queue_dir}/failed/{task_name}")
         else:
-            Path(f"{queue_dir}/done").mkdir(exist_ok=True)
-            done_path = active_path.rename(f"{queue_dir}/done/{task_name}")
-            print(f"{prefix} {Fore.GREEN}done task {task_name}{Style.RESET_ALL}")
+            # task completed
+            task_file.rename(f"{queue_dir}/done/{task_name}")
 
 
 if __name__ == "__main__":
