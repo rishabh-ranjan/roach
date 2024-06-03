@@ -20,12 +20,16 @@ class Store:
         return torch.load(path, map_location=self.device)
 
 
-def init(project, store_root="/lfs/local/0/ranjanr/stores"):
+store_root = "/lfs/local/0/ranjanr/stores"
+store = None
+
+
+def init(project):
+    global store
     ts = str(time.time_ns())
     store_dir = f"{store_root}/{project}/{ts}"
     store = Store(store_dir)
-    return store
 
 
-def finish(store):
+def finish():
     store["done"] = True
