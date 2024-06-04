@@ -37,6 +37,7 @@ class Store:
 
 def get_caller_file():
     caller = inspect.currentframe().f_back.f_back
+    # TODO: return full path
     file = caller.f_code.co_filename
     return file
 
@@ -55,6 +56,7 @@ def init(project, store_root="/lfs/local/0/ranjanr/stores"):
         "caller_file": get_caller_file(),
         "done": False,
     }
+    # TODO: add start + end time (ISO format?). redundant with timestamp?
 
 
 def finish():
@@ -115,6 +117,7 @@ def worker(queue, sleep_time=1, queue_root="/lfs/local/0/ranjanr/queues"):
         task_name = Path(task_file).name
 
         # killing worker should move task back to ready dir
+        # TODO: there seems to be some bug here
         def handler(signum, frame):
             task_file.rename(f"{queue_dir}/ready/{task_name}")
 
@@ -138,6 +141,8 @@ def worker(queue, sleep_time=1, queue_root="/lfs/local/0/ranjanr/queues"):
             # line buffering
             with open(task_file, "a", buffering=1) as f:
                 f.write(f"\n=== {worker_name} ===\n")
+                # TODO: print subprocess pid to allow killing
+                # TODO: kill subprocess in the SIGTERM handler
                 subprocess.run(cmd, shell=True, stdout=f, stderr=f, check=True)
         except subprocess.CalledProcessError:
             # task failed
