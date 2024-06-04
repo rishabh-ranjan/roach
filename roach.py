@@ -1,3 +1,4 @@
+import inspect
 import os
 from pathlib import Path
 import signal
@@ -15,6 +16,9 @@ class Store:
         self.device = device
         Path(store_dir).mkdir(parents=True, exist_ok=True)
 
+    def __repr__(self):
+        return f"Store('{self.store_dir}', '{self.device}')"
+
     def __setitem__(self, key, val):
         store_file = f"{self.store_dir}/{key}.pt"
         Path(store_file).parent.mkdir(parents=True, exist_ok=True)
@@ -22,7 +26,19 @@ class Store:
 
     def __getitem__(self, key):
         store_file = f"{self.store_dir}/{key}.pt"
-        return torch.load(store_file, map_location=self.device)
+        try:
+            obj = torch.load(store_file, map_location=self.device)
+            return obj
+        except FileNotFoundError:
+            store_dir = f"{self.store_dir}/{key}"
+            store = Store(store_dir)
+            return store
+
+
+def get_caller_file():
+    caller = inspect.currentframe().f_back.f_back
+    file = caller.f_code.co_filename
+    return file
 
 
 store = None
@@ -30,20 +46,38 @@ store = None
 
 def init(project, store_root="/lfs/local/0/ranjanr/stores"):
     global store
-    ts = time.time_ns()
-    store_dir = f"{store_root}/{project}/{ts}"
+    timestamp = time.time_ns()
+    store_dir = f"{store_root}/{project}/{timestamp}"
     store = Store(store_dir)
+    store["__roach__"] = {
+        "project": project,
+        "timestamp": timestamp,
+        "caller_file": get_caller_file(),
+        "done": False,
+    }
 
 
 def finish():
-    store["done"] = True
+    roach_dict = store["__roach__"]
+    roach_dict["done"] = True
+    store["__roach__"] = roach_dict
+
+
+def scan(project, store_root="/lfs/local/0/ranjanr/stores"):
+    project_dir = f"{store_root}/{project}"
+    stores = []
+    for store_dir in sorted(Path(project_dir).iterdir()):
+        store = Store(store_dir)
+        if store["__roach__"]["done"]:
+            stores.append(store)
+    return stores
 
 
 def submit(queue, cmd, queue_root="/lfs/local/0/ranjanr/queues"):
     assert "\n" not in cmd
 
-    ts = time.time_ns()
-    task_file = f"{queue_root}/{queue}/ready/{ts}"
+    timestamp = time.time_ns()
+    task_file = f"{queue_root}/{queue}/ready/{timestamp}"
     Path(task_file).parent.mkdir(parents=True, exist_ok=True)
 
     with open(task_file, "w") as f:
@@ -52,6 +86,11 @@ def submit(queue, cmd, queue_root="/lfs/local/0/ranjanr/queues"):
 
 
 def worker(queue, sleep_time=1, queue_root="/lfs/local/0/ranjanr/queues"):
+    # worker is meant to be run in the background
+    # hence,
+    # - no logging: check state directly from queue dir
+    # - no interrupt handling: kill with SIGTERM
+
     # make state dirs
     queue_dir = f"{queue_root}/{queue}"
     for state in ["ready", "active", "done", "failed"]:
