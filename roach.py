@@ -10,6 +10,7 @@ import fire
 import torch
 
 
+# TODO: need to speed up access for filter, maybe by caching
 class Store:
     def __init__(self, store_dir, device="cpu"):
         self.store_dir = store_dir
@@ -119,6 +120,8 @@ def worker(queue, sleep_time=1, queue_root="/lfs/local/0/ranjanr/queues"):
         # killing worker should move task back to ready dir
         # TODO: there seems to be some bug here
         def handler(signum, frame):
+            # FIXME: when we are here, task is already in done or failed dir
+            # sigterm seems to wait for the subprocess to finish
             task_file.rename(f"{queue_dir}/ready/{task_name}")
 
         # register handler before moving to active dir
