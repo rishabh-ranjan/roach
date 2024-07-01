@@ -120,13 +120,18 @@ def worker(queue, sleep_time=1, queue_root="/lfs/local/0/ranjanr/queues"):
 
         for task_file in task_file_list:
             # read task
-            with open(task_file, "r") as f:
-                # first line of task file is the shell command
-                # remove trailing newline
-                cmd = f.readline().strip()
-                # second line of task file is the requires clause
-                # TODO: swap requires and cmd line order
-                requires = f.readline().strip()
+            try:
+                with open(task_file, "r") as f:
+                    # first line of task file is the shell command
+                    # remove trailing newline
+                    cmd = f.readline().strip()
+                    # second line of task file is the requires clause
+                    # TODO: swap requires and cmd line order
+                    requires = f.readline().strip()
+            except FileNotFoundError:
+                # task no longer exists
+                # maybe another worker acquired it
+                continue
 
             # check requires
             try:
