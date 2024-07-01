@@ -112,12 +112,26 @@ def worker(queue, sleep_time=1, queue_root="/lfs/local/0/ranjanr/queues"):
     # worker loop
     while True:
         # select task
-        task_iter = Path(f"{queue_dir}/ready").iterdir()
-        try:
-            task_file = min(task_iter)
-        except ValueError:
+        task_file_list = list(Path(f"{queue_dir}/ready").iterdir())
+        if len(task_file_list) == 0:
+            # no task to run
             time.sleep(sleep_time)
             continue
+
+        for task_file in task_file_list:
+            # check requires
+            try:
+                subprocess.run(requires, shell=True, check=True)
+            except subprocess.CalledProcessError:
+                # requires failed
+                continue
+            else:
+                break
+        else:
+            # no task to run
+            time.sleep(sleep_time)
+            continue
+
         task_name = Path(task_file).name
 
         # killing worker should move task back to ready dir
@@ -145,17 +159,6 @@ def worker(queue, sleep_time=1, queue_root="/lfs/local/0/ranjanr/queues"):
             cmd = f.readline().strip()
             # second line of task file is the requires clause
             requires = f.readline().strip()
-
-        # check requires
-        try:
-            with open(task_file, "a", buffering=1) as f:
-                f.write(f"\n=== {worker_name}:requires ===\n")
-                subprocess.run(requires, shell=True, stdout=f, stderr=f, check=True)
-        except subprocess.CalledProcessError:
-            # requires failed
-            task_file.rename(f"{queue_dir}/ready/{task_name}")
-            time.sleep(sleep_time)
-            continue
 
         # run task
         try:
