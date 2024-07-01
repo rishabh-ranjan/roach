@@ -76,8 +76,9 @@ def scan(project, store_root="/lfs/local/0/ranjanr/stores"):
     return stores
 
 
-def submit(queue, cmd, queue_root="/lfs/local/0/ranjanr/queues"):
+def submit(queue, cmd, requires="true", queue_root="/lfs/local/0/ranjanr/queues"):
     assert "\n" not in cmd
+    assert "\n" not in requires
 
     timestamp = time.time_ns()
     task_file = f"{queue_root}/{queue}/ready/{timestamp}"
@@ -85,6 +86,8 @@ def submit(queue, cmd, queue_root="/lfs/local/0/ranjanr/queues"):
 
     with open(task_file, "w") as f:
         f.write(cmd)
+        f.write("\n")
+        f.write(requires)
         f.write("\n")
 
 
@@ -135,15 +138,29 @@ def worker(queue, sleep_time=1, queue_root="/lfs/local/0/ranjanr/queues"):
             # maybe another worker acquired it
             continue
 
-        # run task
+        # read task
         with open(task_file, "r") as f:
             # first line of task file is the shell command
             # remove trailing newline
             cmd = f.readline().strip()
+            # second line of task file is the requires clause
+            requires = f.readline().strip()
+
+        # check requires
+        try:
+            with open(task_file, "a", buffering=1) as f:
+                f.write(f"\n=== {worker_name}:requires ===\n")
+                subprocess.run(requires, shell=True, stdout=f, stderr=f, check=True)
+        except subprocess.CalledProcessError:
+            # requires failed
+            task_file.rename(f"{queue_dir}/ready/{task_name}")
+            continue
+
+        # run task
         try:
             # line buffering
             with open(task_file, "a", buffering=1) as f:
-                f.write(f"\n=== {worker_name} ===\n")
+                f.write(f"\n=== {worker_name}:cmd ===\n")
                 # TODO: print subprocess pid to allow killing
                 # TODO: kill subprocess in the SIGTERM handler
                 subprocess.run(cmd, shell=True, stdout=f, stderr=f, check=True)
