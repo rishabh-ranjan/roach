@@ -154,6 +154,7 @@ def worker(queue, sleep_time=1, queue_root="/lfs/local/0/ranjanr/queues"):
         except subprocess.CalledProcessError:
             # requires failed
             task_file.rename(f"{queue_dir}/ready/{task_name}")
+            time.sleep(sleep_time)
             continue
 
         # run task
