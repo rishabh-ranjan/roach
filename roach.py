@@ -112,7 +112,7 @@ def worker(queue, sleep_time=1, queue_root="/lfs/local/0/ranjanr/queues"):
     # worker loop
     while True:
         # select task
-        task_file_list = list(Path(f"{queue_dir}/ready").iterdir())
+        task_file_list = sorted(Path(f"{queue_dir}/ready").iterdir())
         if len(task_file_list) == 0:
             # no task to run
             time.sleep(sleep_time)
