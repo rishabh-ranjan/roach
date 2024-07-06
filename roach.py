@@ -90,6 +90,8 @@ def submit(queue, cmd, requires="true", queue_root="/lfs/local/0/ranjanr/queues"
         f.write(requires)
         f.write("\n")
 
+    return task_file
+
 
 def worker(queue, sleep_time=1, queue_root="/lfs/local/0/ranjanr/queues"):
     # worker is meant to be run in the background
