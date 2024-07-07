@@ -15,7 +15,6 @@ class Store:
     def __init__(self, store_dir, device="cpu"):
         self.store_dir = store_dir
         self.device = device
-        Path(store_dir).mkdir(parents=True, exist_ok=True)
 
     def __repr__(self):
         return f"Store('{self.store_dir}', '{self.device}')"
@@ -27,13 +26,16 @@ class Store:
 
     def __getitem__(self, key):
         store_file = f"{self.store_dir}/{key}.pt"
-        try:
+        if Path(store_file).is_file():
             obj = torch.load(store_file, map_location=self.device)
             return obj
-        except FileNotFoundError:
-            store_dir = f"{self.store_dir}/{key}"
+
+        store_dir = f"{self.store_dir}/{key}"
+        if Path(store_dir).is_dir():
             store = Store(store_dir)
             return store
+
+        raise KeyError(key)
 
 
 def get_caller_file():
