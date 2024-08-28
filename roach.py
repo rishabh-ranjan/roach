@@ -27,7 +27,7 @@ class Store:
     def __getitem__(self, key):
         store_file = f"{self.store_dir}/{key}.pt"
         if Path(store_file).is_file():
-            obj = torch.load(store_file, map_location=self.device)
+            obj = torch.load(store_file, map_location=self.device, weights_only=False)
             return obj
 
         store_dir = f"{self.store_dir}/{key}"
@@ -68,12 +68,12 @@ def finish():
     store["__roach__"] = roach_dict
 
 
-def scan(project, store_root="/lfs/local/0/ranjanr/stores"):
+def scan(project, store_root="/lfs/local/0/ranjanr/stores", done_only=True):
     project_dir = f"{store_root}/{project}"
     stores = []
     for store_dir in sorted(Path(project_dir).iterdir()):
         store = Store(store_dir)
-        if store["__roach__"]["done"]:
+        if not done_only or store["__roach__"]["done"]:
             stores.append(store)
     return stores
 
