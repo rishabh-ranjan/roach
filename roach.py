@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import signal
 import socket
+import struct
 import subprocess
 import time
 
@@ -36,6 +37,21 @@ class Store:
             return store
 
         raise KeyError(key)
+
+    def log_float(self, key, val):
+        store_file = f"{self.store_dir}/{key}.bin"
+        Path(store_file).parent.mkdir(parents=True, exist_ok=True)
+        with open(store_file, "ab") as f:
+            val_bytes = struct.pack("f", val)
+            f.write(val_bytes)
+
+    def load_floats(self, key):
+        store_file = f"{self.store_dir}/{key}.bin"
+        with open(store_file, "rb") as f:
+            vals_bytes = f.read()
+        num_floats = len(vals_bytes) // 4
+        vals = struct.unpack(f"{num_floats}f", vals_bytes)
+        return vals
 
 
 def get_caller_file():
