@@ -1,4 +1,6 @@
+import base64
 import inspect
+import json
 import os
 from pathlib import Path
 import signal
@@ -9,89 +11,7 @@ import time
 
 import fire
 import torch
-
-
-# TODO: need to speed up access for filter, maybe by caching
-class Store:
-    def __init__(self, store_dir, device="cpu"):
-        self.store_dir = store_dir
-        self.device = device
-
-    def __repr__(self):
-        return f"Store('{self.store_dir}', '{self.device}')"
-
-    def __setitem__(self, key, val):
-        store_file = f"{self.store_dir}/{key}.pt"
-        Path(store_file).parent.mkdir(parents=True, exist_ok=True)
-        torch.save(val, store_file)
-
-    def __getitem__(self, key):
-        store_file = f"{self.store_dir}/{key}.pt"
-        if Path(store_file).is_file():
-            obj = torch.load(store_file, map_location=self.device, weights_only=False)
-            return obj
-
-        store_dir = f"{self.store_dir}/{key}"
-        if Path(store_dir).is_dir():
-            store = Store(store_dir)
-            return store
-
-        raise KeyError(key)
-
-    def log_float(self, key, val):
-        store_file = f"{self.store_dir}/{key}.bin"
-        Path(store_file).parent.mkdir(parents=True, exist_ok=True)
-        with open(store_file, "ab") as f:
-            val_bytes = struct.pack("f", val)
-            f.write(val_bytes)
-
-    def load_floats(self, key):
-        store_file = f"{self.store_dir}/{key}.bin"
-        with open(store_file, "rb") as f:
-            vals_bytes = f.read()
-        num_floats = len(vals_bytes) // 4
-        vals = struct.unpack(f"{num_floats}f", vals_bytes)
-        return vals
-
-
-def get_caller_file():
-    caller = inspect.currentframe().f_back.f_back
-    # TODO: return full path
-    file = caller.f_code.co_filename
-    return file
-
-
-store = None
-
-
-def init(project, store_root="/lfs/local/0/ranjanr/stores"):
-    global store
-    timestamp = time.time_ns()
-    store_dir = f"{store_root}/{project}/{timestamp}"
-    store = Store(store_dir)
-    store["__roach__"] = {
-        "project": project,
-        "timestamp": timestamp,
-        "caller_file": get_caller_file(),
-        "done": False,
-    }
-    # TODO: add start + end time (ISO format?). redundant with timestamp?
-
-
-def finish():
-    roach_dict = store["__roach__"]
-    roach_dict["done"] = True
-    store["__roach__"] = roach_dict
-
-
-def scan(project, store_root="/lfs/local/0/ranjanr/stores", done_only=True):
-    project_dir = f"{store_root}/{project}"
-    stores = []
-    for store_dir in sorted(Path(project_dir).iterdir()):
-        store = Store(store_dir)
-        if not done_only or store["__roach__"]["done"]:
-            stores.append(store)
-    return stores
+from tqdm import tqdm
 
 
 def submit(queue, cmd, requires="true", queue_root="/lfs/local/0/ranjanr/queues"):
@@ -208,6 +128,75 @@ def worker(queue, sleep_time=1, queue_root="/lfs/local/0/ranjanr/queues"):
         else:
             # task completed
             task_file.rename(f"{queue_dir}/done/{task_name}")
+
+
+class Roach:
+    def __init__(self, ts=None, root="/lfs/local/0/ranjanr/.store"):
+        if ts is None:
+            ts = base64.b32encode(time.time_ns().to_bytes(8))[:-3].lower().decode()
+        self.ts = ts
+        self.root = root
+
+    def info(self, info_dict):
+        file = f"{self.root}/{self.ts}.json"
+        try:
+            with open(file, "r") as f:
+                info = json.load(f)
+        except FileNotFoundError:
+            Path(self.root).mkdir(parents=True, exist_ok=True)
+            info = {}
+
+        info.update(info_dict)
+
+        with open(file, "w") as f:
+            json.dump(info, f, indent=2)
+
+    def dump(self, dump_dict):
+        for key, val in dump_dict.items():
+            file = f"{self.root}/{self.ts}/{key}.pt"
+            Path(file).parent.mkdir(parents=True, exist_ok=True)
+            torch.save(val, file)
+
+    def log(self, log_dict):
+        for key, val in log_dict.items():
+            file = f"{self.root}/{self.ts}/{key}.bin"
+            Path(file).parent.mkdir(parents=True, exist_ok=True)
+            with open(file, "ab") as f:
+                val_bytes = struct.pack("f", val)
+                f.write(val_bytes)
+
+    def load(self, key=None):
+        if key is None:
+            file = f"{self.root}/{self.ts}.json"
+            with open(file, "r") as f:
+                return json.load(f)
+
+        load_dir = f"{self.root}/{self.ts}"
+        files = list(Path(load_dir).glob(f"{key}.*"))
+        assert len(files) == 1
+        file = files[0]
+        fname = Path(file).name
+
+        if fname.endswith(".pt"):
+            return torch.load(file, map_location="cpu", weights_only=False)
+
+        elif fname.endswith(".bin"):
+            with open(file, "rb") as f:
+                val_bytes = f.read()
+            num_floats = len(val_bytes) // 4
+            return struct.unpack(f"{num_floats}f", val_bytes)
+
+
+roach = Roach()
+
+
+def scan(root="/lfs/local/0/ranjanr/.store"):
+    info_list = {}
+    for file in tqdm(list(Path(root).glob("*.json"))):
+        with open(file, "r") as f:
+            info = json.load(f)
+        info_list[file.name[: -len(".json")]] = info
+    return info_list
 
 
 if __name__ == "__main__":
