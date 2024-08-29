@@ -133,9 +133,13 @@ def worker(queue, sleep_time=1, queue_root="/lfs/local/0/ranjanr/queues"):
 class Roach:
     def __init__(self, ts=None, root="/lfs/local/0/ranjanr/.store"):
         if ts is None:
-            ts = base64.b32encode(time.time_ns().to_bytes(8))[:-3].lower().decode()
-        self.ts = ts
+            self.fresh_ts()
+        else:
+            self.ts = ts
         self.root = root
+
+    def fresh_ts(self):
+        self.ts = base64.b32encode(time.time_ns().to_bytes(8))[:-3].lower().decode()
 
     def info(self, info_dict):
         file = f"{self.root}/{self.ts}.json"
