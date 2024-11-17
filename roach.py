@@ -1,4 +1,5 @@
 import base64
+from datetime import datetime
 import inspect
 import json
 import os
@@ -11,7 +12,7 @@ import time
 
 import fire
 import torch
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 
 def submit(queue, cmd, requires="true", queue_root="/lfs/local/0/ranjanr/queues"):
@@ -130,16 +131,19 @@ def worker(queue, sleep_time=1, queue_root="/lfs/local/0/ranjanr/queues"):
             task_file.rename(f"{queue_dir}/done/{task_name}")
 
 
+def _fresh_ts():
+    now = datetime.now()
+    nanos = str(time.time_ns() % 1_000_000_000).zfill(9)
+    return f"{now.strftime('%Y%m%d_%H%M%S')}_{nanos}"
+
+
 class Roach:
     def __init__(self, ts=None, root="/lfs/local/0/ranjanr/.store"):
         if ts is None:
-            self.fresh_ts()
+            self.ts = _fresh_ts()
         else:
             self.ts = ts
         self.root = root
-
-    def fresh_ts(self):
-        self.ts = base64.b32encode(time.time_ns().to_bytes(8))[:-3].lower().decode()
 
     def info(self, info_dict):
         file = f"{self.root}/{self.ts}.json"
@@ -195,12 +199,12 @@ roach = Roach()
 
 
 def scan(root="/lfs/local/0/ranjanr/.store"):
-    info_list = {}
+    info_dict = {}
     for file in tqdm(list(Path(root).glob("*.json"))):
         with open(file, "r") as f:
             info = json.load(f)
-        info_list[file.name[: -len(".json")]] = info
-    return info_list
+        info_dict[file.name[: -len(".json")]] = info
+    return info_dict
 
 
 if __name__ == "__main__":
