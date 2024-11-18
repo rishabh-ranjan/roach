@@ -194,6 +194,12 @@ class Roach:
             num_floats = len(val_bytes) // 4
             return struct.unpack(f"{num_floats}f", val_bytes)
 
+    def glob(self, pattern="*"):
+        return [
+            p.relative_to(f"{self.root}/{self.ts}").stem
+            for p in Path(f"{self.root}/{self.ts}").glob(pattern)
+        ]
+
 
 roach = Roach()
 
