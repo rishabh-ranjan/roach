@@ -131,56 +131,35 @@ def worker(queue, sleep_time=1, queue_root="/lfs/local/0/ranjanr/queues"):
             task_file.rename(f"{queue_dir}/done/{task_name}")
 
 
-def _fresh_ts():
+def make_run_id():
     now = datetime.now()
     nanos = str(time.time_ns() % 1_000_000_000).zfill(9)
     return f"{now.strftime('%Y%m%d_%H%M%S')}_{nanos}"
 
 
 class Roach:
-    def __init__(self, ts=None, root="/lfs/local/0/ranjanr/.store"):
-        if ts is None:
-            self.ts = _fresh_ts()
-        else:
-            self.ts = ts
+    def __init__(self, root=None):
         self.root = root
 
-    def info(self, info_dict):
-        file = f"{self.root}/{self.ts}.json"
-        try:
-            with open(file, "r") as f:
-                info = json.load(f)
-        except FileNotFoundError:
-            Path(self.root).mkdir(parents=True, exist_ok=True)
-            info = {}
+    def init(self, parent):
+        self.run_id = make_run_id()
+        self.root = f"{parent}/{self.run_id}"
 
-        info.update(info_dict)
+    def save(self, key, val):
+        file = f"{self.root}/{key}.pt"
+        Path(file).parent.mkdir(parents=True, exist_ok=True)
+        torch.save(val, file)
 
-        with open(file, "w") as f:
-            json.dump(info, f, indent=2)
+    def log(self, key, val):
+        file = f"{self.root}/{key}.bin"
+        Path(file).parent.mkdir(parents=True, exist_ok=True)
+        with open(file, "ab") as f:
+            assert type(val) == float
+            val_bytes = struct.pack("f", val)
+            f.write(val_bytes)
 
-    def dump(self, dump_dict):
-        for key, val in dump_dict.items():
-            file = f"{self.root}/{self.ts}/{key}.pt"
-            Path(file).parent.mkdir(parents=True, exist_ok=True)
-            torch.save(val, file)
-
-    def log(self, log_dict):
-        for key, val in log_dict.items():
-            file = f"{self.root}/{self.ts}/{key}.bin"
-            Path(file).parent.mkdir(parents=True, exist_ok=True)
-            with open(file, "ab") as f:
-                val_bytes = struct.pack("f", val)
-                f.write(val_bytes)
-
-    def load(self, key=None):
-        if key is None:
-            file = f"{self.root}/{self.ts}.json"
-            with open(file, "r") as f:
-                return json.load(f)
-
-        load_dir = f"{self.root}/{self.ts}"
-        files = list(Path(load_dir).glob(f"{key}.*"))
+    def load(self, key):
+        files = list(Path(self.root).glob(f"{key}.*"))
         assert len(files) == 1
         file = files[0]
         fname = Path(file).name
@@ -194,23 +173,16 @@ class Roach:
             num_floats = len(val_bytes) // 4
             return struct.unpack(f"{num_floats}f", val_bytes)
 
-    def glob(self, pattern="*"):
-        return [
-            p.relative_to(f"{self.root}/{self.ts}").stem
-            for p in Path(f"{self.root}/{self.ts}").glob(pattern)
-        ]
+    def ls(self, pattern="*"):
+        return [p.relative_to(self.root).stem for p in Path(self.root).glob(pattern)]
 
 
 roach = Roach()
 
 
-def scan(root="/lfs/local/0/ranjanr/.store"):
-    info_dict = {}
-    for file in tqdm(list(Path(root).glob("*.json"))):
-        with open(file, "r") as f:
-            info = json.load(f)
-        info_dict[file.name[: -len(".json")]] = info
-    return info_dict
+def iter_roaches(parent):
+    for path in sorted(Path(root).glob("*")):
+        yield path.name, Roach(path)
 
 
 if __name__ == "__main__":
