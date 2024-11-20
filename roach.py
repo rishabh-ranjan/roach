@@ -145,43 +145,43 @@ class Roach:
         self.run_id = make_run_id()
         self.root = f"{parent}/{self.run_id}"
 
-    def save(self, key, val):
-        file = f"{self.root}/{key}.pt"
-        Path(file).parent.mkdir(parents=True, exist_ok=True)
-        torch.save(val, file)
+    def save(self, obj, key):
+        path = f"{self.root}/{key}.pt"
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        torch.save(obj, path)
 
     def log(self, key, val):
-        file = f"{self.root}/{key}.bin"
-        Path(file).parent.mkdir(parents=True, exist_ok=True)
-        with open(file, "ab") as f:
-            assert type(val) == float
+        path = f"{self.root}/{key}.bin"
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "ab") as f:
+            val = float(val)
             val_bytes = struct.pack("f", val)
             f.write(val_bytes)
 
     def load(self, key):
         files = list(Path(self.root).glob(f"{key}.*"))
         assert len(files) == 1
-        file = files[0]
-        fname = Path(file).name
+        path = files[0]
+        fname = Path(path).name
 
         if fname.endswith(".pt"):
-            return torch.load(file, map_location="cpu", weights_only=False)
+            return torch.load(path, map_location="cpu", weights_only=False)
 
         elif fname.endswith(".bin"):
-            with open(file, "rb") as f:
+            with open(path, "rb") as f:
                 val_bytes = f.read()
             num_floats = len(val_bytes) // 4
             return struct.unpack(f"{num_floats}f", val_bytes)
 
     def ls(self, pattern="*"):
-        return [p.relative_to(self.root).stem for p in Path(self.root).glob(pattern)]
+        return [p.relative_to(self.root).name for p in Path(self.root).glob(pattern)]
 
 
 roach = Roach()
 
 
 def iter_roaches(parent):
-    for path in sorted(Path(root).glob("*")):
+    for path in sorted(Path(parent).glob("*")):
         yield path.name, Roach(path)
 
 
