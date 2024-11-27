@@ -19,21 +19,16 @@ class Queue:
     def __init__(self, queue_dir):
         self.queue_dir = queue_dir
 
-    def submit(self, cmd, requires="true"):
-        assert "\n" not in cmd
-        assert "\n" not in requires
-
+    def submit(self, cmd):
         task_id = make_task_id()
-        task_file = f"{self.queue_dir}/ready/{task_id}"
-        Path(task_file).parent.mkdir(parents=True, exist_ok=True)
+        task_dir = f"{self.queue_dir}/ready/{task_id}"
+        Path(task_dir).mkdir(parents=True, exist_ok=True)
 
-        with open(task_file, "w") as f:
+        with open(f"{task_dir}/cmd", "w") as f:
             f.write(cmd)
-            f.write("\n")
-            f.write(requires)
-            f.write("\n")
+        Path(f"{task_dir}/cmd").chmod(0o755)
 
-        return task_file
+        return task_dir
 
 
 SLEEP_TIME = 1
@@ -59,85 +54,44 @@ def worker(queue_dir):
     # worker loop
     while True:
         # select task
-        task_file_list = sorted(Path(f"{queue_dir}/ready").iterdir())
-        if len(task_file_list) == 0:
+        # XXX: keep this inefficient loop, will need for precondition checks
+        task_dir_list = sorted(Path(f"{queue_dir}/ready").iterdir())
+        if len(task_dir_list) == 0:
             # no task to run
             time.sleep(SLEEP_TIME)
             continue
 
-        for task_file in task_file_list:
-            # read task
-            try:
-                with open(task_file, "r") as f:
-                    # first line of task file is the shell command
-                    # remove trailing newline
-                    cmd = f.readline().strip()
-                    # second line of task file is the requires clause
-                    # TODO: swap requires and cmd line order
-                    requires = f.readline().strip()
-            except FileNotFoundError:
-                # task no longer exists
-                # maybe another worker acquired it
-                continue
-
-            # check requires
-            try:
-                subprocess.run(requires, shell=True, check=True)
-            except subprocess.CalledProcessError:
-                # requires failed
-                continue
-            else:
-                break
-        else:
-            # no task to run
-            time.sleep(SLEEP_TIME)
-            continue
-
-        task_name = Path(task_file).name
-
-        # killing worker should move task back to ready dir
-        # TODO: there seems to be some bug here
-        def handler(signum, frame):
-            # FIXME: when we are here, task is already in done or failed dir
-            # sigterm seems to wait for the subprocess to finish
-            task_file.rename(f"{queue_dir}/ready/{task_name}")
-
-        # register handler before moving to active dir
-        signal.signal(signal.SIGTERM, handler)
+        task_dir = task_dir_list[0]
+        task_id = Path(task_dir).name
 
         # acquire task
         try:
-            task_file = task_file.rename(f"{queue_dir}/active/{task_name}")
+            task_dir = task_dir.rename(f"{queue_dir}/active/{task_id}")
         except FileNotFoundError:
             # task no longer exists
             # maybe another worker acquired it
             continue
 
-        # read task
-        with open(task_file, "r") as f:
-            # first line of task file is the shell command
-            # remove trailing newline
-            cmd = f.readline().strip()
-            # second line of task file is the requires clause
-            requires = f.readline().strip()
-
         # run task
         # line buffering
-        with open(task_file, "a", buffering=1) as f:
+        with open(f"{task_dir}/out", "a", buffering=1) as f:
             f.write(f"\n=== {worker_name}:cmd ===\n")
-            proc = subprocess.Popen(cmd, shell=True, stdout=f, stderr=f)
+            proc = subprocess.Popen(f"{task_dir}/cmd", stdout=f, stderr=f)
 
             def handler(signum, frame):
+                # kill subprocess and its children
+                for child in psutil.Process(proc.pid).children(recursive=True):
+                    child.kill()
                 proc.kill()
-                task_file.rename(f"{queue_dir}/ready/{task_name}")
+                task_dir.rename(f"{queue_dir}/ready/{task_id}")
 
-            # update SIGTERM handler to kill subprocess
+            # SIGTERM handler to kill subprocess
             signal.signal(signal.SIGTERM, handler)
 
             while proc.poll() is None:
-                if not Path(task_file).exists():
+                if not Path(task_dir).exists():
                     # task file was moved
-                    # kill subprocess
+                    # kill subprocess and its children
                     for child in psutil.Process(proc.pid).children(recursive=True):
                         child.kill()
                     proc.kill()
@@ -146,7 +100,7 @@ def worker(queue_dir):
             else:
                 if proc.poll() == 0:
                     # task completed
-                    task_file.rename(f"{queue_dir}/done/{task_name}")
+                    task_dir.rename(f"{queue_dir}/done/{task_id}")
                 else:
                     # task failed
-                    task_file.rename(f"{queue_dir}/failed/{task_name}")
+                    task_dir.rename(f"{queue_dir}/failed/{task_id}")
