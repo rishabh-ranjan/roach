@@ -5,6 +5,7 @@ import signal
 import socket
 import struct
 import subprocess
+import sys
 import time
 import psutil
 
@@ -77,9 +78,11 @@ def worker(queue_dir):
         def handler(signum, frame):
             # move back to ready dir
             task_dir.rename(f"{queue_dir}/ready/{task_id}")
+            sys.exit(0)
 
-        # SIGTERM handler to kill subprocess
+        # register handlers
         signal.signal(signal.SIGTERM, handler)
+        signal.signal(signal.SIGINT, handler)
 
         # run task
         # line buffering
@@ -97,9 +100,11 @@ def worker(queue_dir):
                     child.kill()
                 proc.kill()
                 task_dir.rename(f"{queue_dir}/ready/{task_id}")
+                sys.exit(0)
 
-            # SIGTERM handler to kill subprocess
+            # register handlers
             signal.signal(signal.SIGTERM, handler)
+            signal.signal(signal.SIGINT, handler)
 
             while proc.poll() is None:
                 if not Path(task_dir).exists():
