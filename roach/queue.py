@@ -5,6 +5,7 @@ import socket
 import struct
 import subprocess
 import time
+import psutil
 
 
 def submit(queue, cmd, requires="true", queue_root="/lfs/local/0/ranjanr/queues"):
@@ -122,15 +123,17 @@ def worker(queue, sleep_time=1, queue_root="/lfs/local/0/ranjanr/queues"):
 
             while proc.poll() is None:
                 if not Path(task_file).exists():
-                    # task was moved to ready dir
+                    # task file was moved
                     # kill subprocess
+                    for child in psutil.Process(proc.pid).children(recursive=True):
+                        child.kill()
                     proc.kill()
                     break
                 time.sleep(1)
-
-            if proc.poll() == 0:
-                # task completed
-                task_file.rename(f"{queue_dir}/done/{task_name}")
             else:
-                # task failed
-                task_file.rename(f"{queue_dir}/failed/{task_name}")
+                if proc.poll() == 0:
+                    # task completed
+                    task_file.rename(f"{queue_dir}/done/{task_name}")
+                else:
+                    # task failed
+                    task_file.rename(f"{queue_dir}/failed/{task_name}")

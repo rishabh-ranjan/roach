@@ -13,6 +13,7 @@ dependencies = [
 	"pandas",
 	"seaborn",
 	"torch",
+	"psutil",
 ]
 
 [tool.flit.module]
