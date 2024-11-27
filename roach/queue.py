@@ -15,6 +15,13 @@ def make_task_id():
     return f"task_{now.strftime('%Y%m%d_%H%M%S')}_{nanos}"
 
 
+def make_worker_id():
+    now = datetime.now()
+    hostname = socket.gethostname().split(".")[0]
+    pid = os.getpid()
+    return f"worker_{now.strftime('%Y%m%d_%H%M%S')}_{hostname}_{pid}"
+
+
 class Queue:
     def __init__(self, queue_dir):
         self.queue_dir = queue_dir
@@ -45,16 +52,11 @@ def worker(queue_dir):
         state_dir = f"{queue_dir}/{state}"
         Path(state_dir).mkdir(parents=True, exist_ok=True)
 
-    # worker name
-    hostname = socket.gethostname()
-    pid = os.getpid()
-    gpus = os.environ.get("CUDA_VISIBLE_DEVICES")
-    worker_name = f"{hostname}:{pid}:{gpus}"
+    worker_id = make_worker_id()
 
     # worker loop
     while True:
         # select task
-        # XXX: keep this inefficient loop, will need for precondition checks
         task_dir_list = sorted(Path(f"{queue_dir}/ready").iterdir())
         if len(task_dir_list) == 0:
             # no task to run
@@ -72,11 +74,22 @@ def worker(queue_dir):
             # maybe another worker acquired it
             continue
 
+        def handler(signum, frame):
+            # move back to ready dir
+            task_dir.rename(f"{queue_dir}/ready/{task_id}")
+
+        # SIGTERM handler to kill subprocess
+        signal.signal(signal.SIGTERM, handler)
+
         # run task
         # line buffering
-        with open(f"{task_dir}/out", "a", buffering=1) as f:
-            f.write(f"\n=== {worker_name}:cmd ===\n")
-            proc = subprocess.Popen(f"{task_dir}/cmd", stdout=f, stderr=f)
+        Path(f"{task_dir}/{worker_id}").mkdir(parents=True, exist_ok=True)
+        Path(f"{task_dir}/{worker_id}").mkdir(parents=True, exist_ok=True)
+        with (
+            open(f"{task_dir}/{worker_id}/out", "w", buffering=1) as out_f,
+            open(f"{task_dir}/{worker_id}/err", "w", buffering=1) as err_f,
+        ):
+            proc = subprocess.Popen(f"{task_dir}/cmd", stdout=out_f, stderr=err_f)
 
             def handler(signum, frame):
                 # kill subprocess and its children
