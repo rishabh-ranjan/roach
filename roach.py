@@ -9,6 +9,7 @@ import socket
 import struct
 import subprocess
 import time
+from types import SimpleNamespace
 
 import fire
 import torch
@@ -116,19 +117,32 @@ def worker(queue, sleep_time=1, queue_root="/lfs/local/0/ranjanr/queues"):
             requires = f.readline().strip()
 
         # run task
-        try:
-            # line buffering
-            with open(task_file, "a", buffering=1) as f:
-                f.write(f"\n=== {worker_name}:cmd ===\n")
-                # TODO: print subprocess pid to allow killing
-                # TODO: kill subprocess in the SIGTERM handler
-                subprocess.run(cmd, shell=True, stdout=f, stderr=f, check=True)
-        except subprocess.CalledProcessError:
-            # task failed
-            task_file.rename(f"{queue_dir}/failed/{task_name}")
-        else:
-            # task completed
-            task_file.rename(f"{queue_dir}/done/{task_name}")
+        # line buffering
+        with open(task_file, "a", buffering=1) as f:
+            f.write(f"\n=== {worker_name}:cmd ===\n")
+            proc = subprocess.Popen(cmd, shell=True, stdout=f, stderr=f)
+
+            def handler(signum, frame):
+                proc.kill()
+                task_file.rename(f"{queue_dir}/ready/{task_name}")
+
+            # update SIGTERM handler to kill subprocess
+            signal.signal(signal.SIGTERM, handler)
+
+            while proc.poll() is None:
+                if not Path(task_file).exists():
+                    # task was moved to ready dir
+                    # kill subprocess
+                    proc.kill()
+                    break
+                time.sleep(1)
+
+            if proc.poll() == 0:
+                # task completed
+                task_file.rename(f"{queue_dir}/done/{task_name}")
+            else:
+                # task failed
+                task_file.rename(f"{queue_dir}/failed/{task_name}")
 
 
 def make_run_id():
@@ -178,6 +192,7 @@ class Roach:
 
 
 roach = Roach()
+scratch = SimpleNamespace()
 
 
 def iter_roaches(parent):
