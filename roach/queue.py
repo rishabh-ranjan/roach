@@ -1,3 +1,4 @@
+from datetime import datetime
 import os
 from pathlib import Path
 import signal
@@ -8,31 +9,43 @@ import time
 import psutil
 
 
-def submit(queue, cmd, requires="true", queue_root="/lfs/local/0/ranjanr/queues"):
-    assert "\n" not in cmd
-    assert "\n" not in requires
-
-    timestamp = time.time_ns()
-    task_file = f"{queue_root}/{queue}/ready/{timestamp}"
-    Path(task_file).parent.mkdir(parents=True, exist_ok=True)
-
-    with open(task_file, "w") as f:
-        f.write(cmd)
-        f.write("\n")
-        f.write(requires)
-        f.write("\n")
-
-    return task_file
+def make_task_id():
+    now = datetime.now()
+    nanos = str(time.time_ns() % 1_000_000_000).zfill(9)
+    return f"task_{now.strftime('%Y%m%d_%H%M%S')}_{nanos}"
 
 
-def worker(queue, sleep_time=1, queue_root="/lfs/local/0/ranjanr/queues"):
+class Queue:
+    def __init__(self, queue_dir):
+        self.queue_dir = queue_dir
+
+    def submit(self, cmd, requires="true"):
+        assert "\n" not in cmd
+        assert "\n" not in requires
+
+        task_id = make_task_id()
+        task_file = f"{self.queue_dir}/ready/{task_id}"
+        Path(task_file).parent.mkdir(parents=True, exist_ok=True)
+
+        with open(task_file, "w") as f:
+            f.write(cmd)
+            f.write("\n")
+            f.write(requires)
+            f.write("\n")
+
+        return task_file
+
+
+SLEEP_TIME = 1
+
+
+def worker(queue_dir):
     # worker is meant to be run in the background
     # hence,
     # - no logging: check state directly from queue dir
     # - no interrupt handling: kill with SIGTERM
 
     # make state dirs
-    queue_dir = f"{queue_root}/{queue}"
     for state in ["ready", "active", "done", "failed"]:
         state_dir = f"{queue_dir}/{state}"
         Path(state_dir).mkdir(parents=True, exist_ok=True)
@@ -49,7 +62,7 @@ def worker(queue, sleep_time=1, queue_root="/lfs/local/0/ranjanr/queues"):
         task_file_list = sorted(Path(f"{queue_dir}/ready").iterdir())
         if len(task_file_list) == 0:
             # no task to run
-            time.sleep(sleep_time)
+            time.sleep(SLEEP_TIME)
             continue
 
         for task_file in task_file_list:
@@ -77,7 +90,7 @@ def worker(queue, sleep_time=1, queue_root="/lfs/local/0/ranjanr/queues"):
                 break
         else:
             # no task to run
-            time.sleep(sleep_time)
+            time.sleep(SLEEP_TIME)
             continue
 
         task_name = Path(task_file).name
@@ -129,7 +142,7 @@ def worker(queue, sleep_time=1, queue_root="/lfs/local/0/ranjanr/queues"):
                         child.kill()
                     proc.kill()
                     break
-                time.sleep(1)
+                time.sleep(SLEEP_TIME)
             else:
                 if proc.poll() == 0:
                     # task completed
