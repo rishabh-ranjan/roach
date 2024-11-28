@@ -1,6 +1,7 @@
 from datetime import datetime
 from pathlib import Path
 import struct
+import tempfile
 import time
 from types import SimpleNamespace
 
@@ -17,7 +18,9 @@ class Store:
     def __init__(self, store_dir=None):
         self.store_dir = store_dir
 
-    def init(self, parent):
+    def init(self, parent=None):
+        if parent is None:
+            parent = tempfile.mkdtemp()
         self.store_id = make_store_id()
         self.store_dir = f"{parent}/{self.store_id}"
 
@@ -48,7 +51,9 @@ class Store:
             with open(path, "rb") as f:
                 val_bytes = f.read()
             num_floats = len(val_bytes) // 4
-            return struct.unpack(f"{num_floats}f", val_bytes)
+            out_list = struct.unpack(f"{num_floats}f", val_bytes)
+            out_tensor = torch.tensor(out_list)
+            return out_tensor
 
     def ls(self, pattern="*"):
         return [
