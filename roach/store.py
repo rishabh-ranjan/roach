@@ -18,14 +18,18 @@ class Store:
     def __init__(self, store_dir=None):
         self.store_dir = store_dir
 
-    def init(self, parent=None):
+    def init(self, parent=None, store_id=None):
         if parent is None:
             parent = tempfile.mkdtemp()
-        self.store_id = make_store_id()
+        if store_id is None:
+            store_id = make_store_id()
+        self.store_id = store_id
         self.store_dir = f"{parent}/{self.store_id}"
 
-    def save(self, obj, key):
+    def save(self, obj, key, allow_overwrite=False):
         path = f"{self.store_dir}/{key}.pt"
+        if Path(path).exists() and not allow_overwrite:
+            raise ValueError(f"key {key} already exists")
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         torch.save(obj, path)
 
