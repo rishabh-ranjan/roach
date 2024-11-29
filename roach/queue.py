@@ -92,26 +92,26 @@ def worker(queue_dir):
         with open(task_file, "r") as f:
             cmd = ""
             for line in f:
-                if line.beginswith("==="):
+                if line.startswith("==="):
                     break
                 cmd += line
 
         # run task
         # line buffering
-        with open(task_file, "w", buffering=1) as f:
+        with open(task_file, "a", buffering=1) as f:
             f.write(f"\n=== {worker_id} ===\n")
             proc = subprocess.Popen(cmd, shell=True, stdout=f, stderr=f)
 
             def handler(signum, frame):
                 kill_family(proc)
-                task_dir.rename(f"{queue_dir}/ready/{task_id}")
+                task_file.rename(f"{queue_dir}/ready/{task_id}")
                 sys.exit(0)
 
             # kill process family on SIGTERM
             signal.signal(signal.SIGTERM, handler)
 
             while proc.poll() is None:
-                if not Path(task_dir).exists():
+                if not Path(task_file).exists():
                     # task file was moved
                     kill_family(proc)
                     break
@@ -119,7 +119,7 @@ def worker(queue_dir):
             else:
                 if proc.poll() == 0:
                     # task completed
-                    task_dir.rename(f"{queue_dir}/done/{task_id}")
+                    task_file.rename(f"{queue_dir}/done/{task_id}")
                 else:
                     # task failed
-                    task_dir.rename(f"{queue_dir}/failed/{task_id}")
+                    task_file.rename(f"{queue_dir}/failed/{task_id}")
