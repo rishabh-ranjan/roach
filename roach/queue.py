@@ -29,17 +29,22 @@ class Queue:
 
     def submit(self, cmd):
         task_id = make_task_id()
-        task_dir = f"{self.queue_dir}/ready/{task_id}"
-        Path(task_dir).mkdir(parents=True, exist_ok=True)
+        task_file = f"{self.queue_dir}/ready/{task_id}"
+        Path(task_file).parent.mkdir(parents=True, exist_ok=True)
 
-        with open(f"{task_dir}/cmd", "w") as f:
+        with open(task_file, "w") as f:
             f.write(cmd)
-        Path(f"{task_dir}/cmd").chmod(0o755)
 
-        return task_dir
+        return task_file
 
 
 SLEEP_TIME = 1
+
+
+def kill_family(proc):
+    for child in psutil.Process(proc.pid).children(recursive=True):
+        child.kill()
+    proc.kill()
 
 
 def worker(queue_dir):
@@ -58,18 +63,18 @@ def worker(queue_dir):
     # worker loop
     while True:
         # select task
-        task_dir_list = sorted(Path(f"{queue_dir}/ready").iterdir())
-        if len(task_dir_list) == 0:
+        task_file_list = sorted(Path(f"{queue_dir}/ready").iterdir())
+        if len(task_file_list) == 0:
             # no task to run
             time.sleep(SLEEP_TIME)
             continue
 
-        task_dir = task_dir_list[0]
-        task_id = Path(task_dir).name
+        task_file = task_file_list[0]
+        task_id = Path(task_file).name
 
         # acquire task
         try:
-            task_dir = task_dir.rename(f"{queue_dir}/active/{task_id}")
+            task_file = task_file.rename(f"{queue_dir}/active/{task_id}")
         except FileNotFoundError:
             # task no longer exists
             # maybe another worker acquired it
@@ -77,42 +82,38 @@ def worker(queue_dir):
 
         def handler(signum, frame):
             # move back to ready dir
-            task_dir.rename(f"{queue_dir}/ready/{task_id}")
+            task_file.rename(f"{queue_dir}/ready/{task_id}")
             sys.exit(0)
 
         # register handlers
         signal.signal(signal.SIGTERM, handler)
-        signal.signal(signal.SIGINT, handler)
+
+        # read task
+        with open(task_file, "r") as f:
+            cmd = ""
+            for line in f:
+                if line.beginswith("==="):
+                    break
+                cmd += line
 
         # run task
         # line buffering
-        Path(f"{task_dir}/{worker_id}").mkdir(parents=True, exist_ok=True)
-        Path(f"{task_dir}/{worker_id}").mkdir(parents=True, exist_ok=True)
-        with (
-            open(f"{task_dir}/{worker_id}/out", "w", buffering=1) as out_f,
-            open(f"{task_dir}/{worker_id}/err", "w", buffering=1) as err_f,
-        ):
-            proc = subprocess.Popen(f"{task_dir}/cmd", stdout=out_f, stderr=err_f)
+        with open(task_file, "w", buffering=1) as f:
+            f.write(f"\n=== {worker_id} ===\n")
+            proc = subprocess.Popen(cmd, shell=True, stdout=f, stderr=f)
 
             def handler(signum, frame):
-                # kill subprocess and its children
-                for child in psutil.Process(proc.pid).children(recursive=True):
-                    child.kill()
-                proc.kill()
+                kill_family(proc)
                 task_dir.rename(f"{queue_dir}/ready/{task_id}")
                 sys.exit(0)
 
-            # register handlers
+            # kill process family on SIGTERM
             signal.signal(signal.SIGTERM, handler)
-            signal.signal(signal.SIGINT, handler)
 
             while proc.poll() is None:
                 if not Path(task_dir).exists():
                     # task file was moved
-                    # kill subprocess and its children
-                    for child in psutil.Process(proc.pid).children(recursive=True):
-                        child.kill()
-                    proc.kill()
+                    kill_family(proc)
                     break
                 time.sleep(SLEEP_TIME)
             else:
