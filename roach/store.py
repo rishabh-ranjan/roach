@@ -27,6 +27,8 @@ class Store:
         self.store_dir = f"{parent}/{self.store_id}"
 
     def save(self, obj, key, allow_overwrite=False):
+        assert self.store_id is not None
+
         path = f"{self.store_dir}/{key}.pt"
         if Path(path).exists() and not allow_overwrite:
             raise ValueError(f"key {key} already exists")
@@ -34,6 +36,8 @@ class Store:
         torch.save(obj, path)
 
     def log(self, key, val):
+        assert self.store_id is not None
+
         path = f"{self.store_dir}/{key}.bin"
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         with open(path, "ab") as f:
@@ -42,6 +46,8 @@ class Store:
             f.write(val_bytes)
 
     def load(self, key):
+        assert self.store_id is not None
+
         files = list(Path(self.store_dir).glob(f"{key}.*"))
         assert len(files) > 0
         assert len(files) <= 1
