@@ -23,11 +23,10 @@ class Store:
             parent = tempfile.mkdtemp()
         if store_id is None:
             store_id = make_store_id()
-        self.store_id = store_id
-        self.store_dir = f"{parent}/{self.store_id}"
+        self.store_dir = f"{parent}/{store_id}"
 
     def save(self, obj, key, allow_overwrite=False):
-        assert self.store_id is not None
+        assert self.store_dir is not None
 
         path = f"{self.store_dir}/{key}.pt"
         if Path(path).exists() and not allow_overwrite:
@@ -36,7 +35,7 @@ class Store:
         torch.save(obj, path)
 
     def log(self, key, val):
-        assert self.store_id is not None
+        assert self.store_dir is not None
 
         path = f"{self.store_dir}/{key}.bin"
         Path(path).parent.mkdir(parents=True, exist_ok=True)
@@ -46,7 +45,7 @@ class Store:
             f.write(val_bytes)
 
     def load(self, key):
-        assert self.store_id is not None
+        assert self.store_dir is not None
 
         files = list(Path(self.store_dir).glob(f"{key}.*"))
         assert len(files) > 0
