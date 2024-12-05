@@ -66,10 +66,10 @@ class Store:
             return out_tensor
 
     def ls(self, pattern="*"):
-        return [
+        return sorted(
             p.relative_to(self.store_dir).name
             for p in Path(self.store_dir).glob(pattern)
-        ]
+        )
 
 
 def iter_stores(parent):
