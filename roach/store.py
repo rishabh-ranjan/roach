@@ -73,8 +73,10 @@ class Store:
 
 
 def iter_stores(parent):
+    out = []
     for path in sorted(Path(parent).glob("*")):
-        yield path.name, Store(path)
+        out.append((path.name, Store(path)))
+    return out
 
 
 store = Store()
