@@ -18,7 +18,7 @@ def make_task_id():
 
 class Queue:
     def __init__(self, queue_dir):
-        self.queue_dir = queue_dir
+        self.queue_dir = Path(queue_dir).expanduser()
 
     def submit(self, cmd):
         task_id = make_task_id()

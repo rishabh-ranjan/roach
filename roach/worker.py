@@ -16,7 +16,7 @@ def make_worker_id():
     now = datetime.now()
     hostname = socket.gethostname().split(".")[0]
     pid = os.getpid()
-    return f"worker_{now.strftime('%Y%m%d_%H%M%S')}_{hostname}_{pid}"
+    return f"worker_{now.strftime('%Y%m%d_%H%M%S')}_{hostname}_{pid}_gpus={os.environ['CUDA_VISIBLE_DEVICES']}"
 
 
 def kill_family(proc):
@@ -30,6 +30,8 @@ def worker(queue_dir):
     # hence,
     # - no logging: check state directly from queue dir
     # - no interrupt handling: kill with SIGTERM
+
+    queue_dir = Path(queue_dir).expanduser()
 
     # make state dirs
     for state in ["ready", "active", "done", "failed"]:
