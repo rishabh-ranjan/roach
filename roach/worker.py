@@ -16,7 +16,7 @@ def make_worker_id():
     now = datetime.now()
     hostname = socket.gethostname().split(".")[0]
     pid = os.getpid()
-    return f"worker_{now.strftime('%Y%m%d_%H%M%S')}_{hostname}_{pid}_gpus={os.environ['CUDA_VISIBLE_DEVICES']}"
+    return f"worker_{now.strftime('%Y%m%d_%H%M%S')}_{hostname}_{pid}_gpus={os.environ.get('CUDA_VISIBLE_DEVICES')}"
 
 
 def kill_family(proc):
