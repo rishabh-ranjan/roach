@@ -20,12 +20,15 @@ class Queue:
     def __init__(self, queue_dir):
         self.queue_dir = Path(queue_dir).expanduser()
 
-    def submit(self, cmd):
+    def submit(self, cmd, chk):
         task_id = make_task_id()
         task_file = f"{self.queue_dir}/ready/{task_id}"
         Path(task_file).parent.mkdir(parents=True, exist_ok=True)
 
         with open(task_file, "w") as f:
+            f.write(chk)
+            f.write("\n---\n")
             f.write(cmd)
 
-        return task_file
+        done_file = f"{self.queue_dir}/done/{task_id}"
+        return f"test -f '{done_file}'"
