@@ -21,7 +21,10 @@ def make_worker_id():
 
 def kill_family(proc):
     for child in psutil.Process(proc.pid).children(recursive=True):
-        child.kill()
+        try:
+            child.kill()
+        except psutil.NoSuchProcess:
+            pass
     proc.kill()
 
 
