@@ -44,6 +44,11 @@ def worker(queue_dir):
     while True:
         # snapshot of the queue
         task_file_list = sorted(Path(f"{queue_dir}/ready").iterdir())
+
+        if len(task_file_list) == 0:
+            # quit to yield slurm job
+            sys.exit(0)
+
         for task_file in task_file_list:
             task_id = Path(task_file).name
 
