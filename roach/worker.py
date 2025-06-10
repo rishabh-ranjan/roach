@@ -64,7 +64,7 @@ def worker(queue_dir):
                     chk += line
 
             # run check
-            chk_proc = subprocess.Popen(chk, shell=True, stdout=f, stderr=f)
+            chk_proc = subprocess.Popen(chk, shell=True)
             while chk_proc.poll() is None:
                 time.sleep(SLEEP_TIME)
 
