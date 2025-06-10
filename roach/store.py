@@ -51,7 +51,7 @@ class Store:
         files = list(Path(self.store_dir).glob(f"{key}.*"))
         if len(files) == 0:
             raise ValueError(f"no files found for key {key}")
-        if len(files) > 1
+        if len(files) > 1:
             raise ValueError(f"multiple files found for key {key}: {files}")
 
         path = files[0]
