@@ -132,6 +132,10 @@ def worker(queue_dir):
                         # task failed
                         task_file.rename(f"{queue_dir}/failed/{task_id}")
 
+                    # TODO: add switch
+                    # quit to yield slurm job
+                    sys.exit(0)
+
         # no more tasks to run for this snapshot of the queue
         time.sleep(SLEEP_TIME)
         continue
