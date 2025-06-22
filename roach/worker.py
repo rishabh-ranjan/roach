@@ -28,7 +28,7 @@ def kill_family(proc):
     proc.kill()
 
 
-def worker(queue_dir):
+def worker(queue_dir, persist=False, one_task=True):
     # worker is meant to be run in the background
     # hence,
     # - no logging: check state directly from queue dir
@@ -48,7 +48,7 @@ def worker(queue_dir):
         # snapshot of the queue
         task_file_list = sorted(Path(f"{queue_dir}/ready").iterdir())
 
-        if len(task_file_list) == 0:
+        if not persist and len(task_file_list) == 0:
             # quit to yield slurm job
             sys.exit(0)
 
@@ -132,9 +132,9 @@ def worker(queue_dir):
                         # task failed
                         task_file.rename(f"{queue_dir}/failed/{task_id}")
 
-                    # TODO: add switch
-                    # quit to yield slurm job
-                    sys.exit(0)
+                    if one_task:
+                        # quit to yield slurm job
+                        sys.exit(0)
 
         # no more tasks to run for this snapshot of the queue
         time.sleep(SLEEP_TIME)
