@@ -28,7 +28,7 @@ def kill_family(proc):
     proc.kill()
 
 
-def worker(queue_dir, persist=False, one_task=True):
+def worker(queue_dir, persist=False, one_task=False):
     # worker is meant to be run in the background
     # hence,
     # - no logging: check state directly from queue dir
