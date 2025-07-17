@@ -46,22 +46,20 @@ def make_worker_id():
 def worker(queue_dir, persist=False, one_task=False):
     # worker is meant to be run in the background
     # hence,
-    # - no logging: check state directly from queue dir
+    # - no logging: inspect state directly from queue dir
     # - no interrupt handling: kill with SIGTERM
 
     queue_dir = Path(queue_dir).expanduser()
-
-    # make state dirs
-    for state in ["ready", "check", "active", "paused", "done", "failed"]:
-        state_dir = f"{queue_dir}/{state}"
-        Path(state_dir).mkdir(parents=True, exist_ok=True)
-
     worker_id = make_worker_id()
 
     # worker loop
     while True:
-        # snapshot of the queue
-        task_file_list = sorted(Path(f"{queue_dir}/ready").iterdir())
+        if not Path(f"{queue_dir}/queued").exists():
+            # worker can be started before submitting tasks to queue
+            task_file_list = []
+        else:
+            # snapshot of the queue
+            task_file_list = sorted(Path(f"{queue_dir}/queued").iterdir())
 
         if not persist and len(task_file_list) == 0:
             # quit to yield slurm job
@@ -70,15 +68,16 @@ def worker(queue_dir, persist=False, one_task=False):
         for task_file in task_file_list:
             task_id = Path(task_file).name
 
-            # acquire task to check
+            # acquire task to check precondition
             try:
-                task_file = task_file.rename(f"{queue_dir}/check/{task_id}")
+                Path(f"{queue_dir}/.checking").mkdir(exist_ok=True)
+                task_file = task_file.rename(f"{queue_dir}/.checking/{task_id}")
             except FileNotFoundError:
                 # task no longer exists
                 # maybe another worker acquired it
                 continue
 
-            # read check
+            # read precondition
             with open(task_file, "r") as f:
                 chk = ""
                 for line in f:
@@ -86,23 +85,24 @@ def worker(queue_dir, persist=False, one_task=False):
                         break
                     chk += line
 
-            # run check
+            # run precondition command
             chk_proc = subprocess.Popen(chk, shell=True)
             while chk_proc.poll() is None:
                 time.sleep(SLEEP_TIME)
 
             if chk_proc.poll() != 0:
                 # check failed
-                task_file.rename(f"{queue_dir}/ready/{task_id}")
+                task_file.rename(f"{queue_dir}/queued/{task_id}")
                 continue
 
             # check successful
             # run task
+            Path(f"{queue_dir}/active").mkdir(exist_ok=True)
             task_file = task_file.rename(f"{queue_dir}/active/{task_id}")
 
             def handler(signum, frame):
-                # move back to ready dir
-                task_file.rename(f"{queue_dir}/ready/{task_id}")
+                # re-queue
+                task_file.rename(f"{queue_dir}/queued/{task_id}")
                 sys.exit(0)
 
             # register handlers
@@ -123,17 +123,11 @@ def worker(queue_dir, persist=False, one_task=False):
             # line buffering
             with open(task_file, "a", buffering=1) as f:
                 f.write(f"\n=== {worker_id} ===\n")
-                proc = subprocess.Popen(
-                    cmd,
-                    shell=True,
-                    stdout=f,
-                    stderr=f,
-                    start_new_session=True,
-                )
+                proc = subprocess.Popen(cmd, shell=True, stdout=f, stderr=f)
 
                 def handler(signum, frame):
                     kill_proc_tree(proc.pid, signal.SIGKILL)
-                    task_file.rename(f"{queue_dir}/ready/{task_id}")
+                    task_file.rename(f"{queue_dir}/queued/{task_id}")
                     sys.exit(0)
 
                 # kill process family on SIGTERM
@@ -164,9 +158,11 @@ def worker(queue_dir, persist=False, one_task=False):
                 else:
                     if proc.poll() == 0:
                         # task completed
+                        Path(f"{queue_dir}/done").mkdir(exist_ok=True)
                         task_file.rename(f"{queue_dir}/done/{task_id}")
                     else:
                         # task failed
+                        Path(f"{queue_dir}/failed").mkdir(exist_ok=True)
                         task_file.rename(f"{queue_dir}/failed/{task_id}")
 
                     if one_task:

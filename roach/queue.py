@@ -22,7 +22,7 @@ class Queue:
 
     def submit(self, cmd, chk="true"):
         task_id = make_task_id()
-        task_file = f"{self.queue_dir}/ready/{task_id}"
+        task_file = f"{self.queue_dir}/queued/{task_id}"
         Path(task_file).parent.mkdir(parents=True, exist_ok=True)
 
         with open(task_file, "w") as f:
