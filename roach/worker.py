@@ -43,15 +43,6 @@ def make_worker_id():
     return f"worker_{now.strftime('%Y%m%d_%H%M%S')}_{hostname}_{pid}_gpus={os.environ.get('CUDA_VISIBLE_DEVICES')}"
 
 
-def kill_family(proc):
-    for child in psutil.Process(proc.pid).children(recursive=True):
-        try:
-            child.kill()
-        except psutil.NoSuchProcess:
-            pass
-    proc.kill()
-
-
 def worker(queue_dir, persist=False, one_task=False):
     # worker is meant to be run in the background
     # hence,
