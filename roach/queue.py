@@ -32,3 +32,13 @@ class Queue:
 
         done_file = f"{self.queue_dir}/done/{task_id}"
         return f"test -f '{done_file}'"
+
+
+def queue(queue_dir, cmd, chk="true"):
+    Queue(queue_dir).submit(cmd, chk)
+
+
+if __name__ == "__main__":
+    import strictfire
+
+    strictfire.StrictFire(queue)
