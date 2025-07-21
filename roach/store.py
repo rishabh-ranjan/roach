@@ -17,12 +17,14 @@ def make_store_id():
 class Store:
     def __init__(self, store_dir=None):
         self.store_dir = store_dir
+        self.store_id = None if store_dir is None else Path(store_dir).name
 
     def init(self, parent=None, store_id=None):
         if parent is None:
             parent = tempfile.mkdtemp()
         if store_id is None:
             store_id = make_store_id()
+        self.store_id = store_id
         self.store_dir = f"{parent}/{store_id}"
         print(f"roach store_dir is {self.store_dir}")
 
