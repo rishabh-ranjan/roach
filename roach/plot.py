@@ -6,7 +6,7 @@ LINE = 5.5
 
 
 def setup_plt():
-    sns.set_theme(context="paper", style="whitegrid", font_scale=0.75)
+    sns.set_theme(context="paper", style="whitegrid", font_scale=0.7)
     plt.rcParams["figure.dpi"] = 157
     plt.rcParams["xtick.major.size"] = 0
     plt.rcParams["ytick.major.size"] = 0
@@ -14,7 +14,15 @@ def setup_plt():
 
 
 def save_fig(fig, save_key):
-    path = f"../figures/{save_key}.pdf"
+    path = f"figures/{save_key}.pdf"
     Path(path).parent.mkdir(exist_ok=True, parents=True)
     fig.savefig(path, bbox_inches="tight", pad_inches=0.01)
+    print(f"saved at {path}")
+
+
+def save_tex(tex, save_key):
+    path = f"tables/{save_key}.tex"
+    Path(path).parent.mkdir(exist_ok=True, parents=True)
+    with open(path, "w") as f:
+        f.write(tex)
     print(f"saved at {path}")
