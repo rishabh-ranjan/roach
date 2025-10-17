@@ -2,6 +2,7 @@ from pathlib import Path
 from matplotlib import pyplot as plt
 import seaborn as sns
 
+# \linewidth in inches for NeurIPS/ICLR papers
 LINE = 5.5
 
 
@@ -13,15 +14,13 @@ def setup_plt():
     plt.rcParams["figure.constrained_layout.use"] = True
 
 
-def save_fig(fig, save_key):
-    path = f"figures/{save_key}.pdf"
+def save_fig(fig, path):
     Path(path).parent.mkdir(exist_ok=True, parents=True)
     fig.savefig(path, bbox_inches="tight", pad_inches=0.01)
     print(f"saved at {path}")
 
 
-def save_tex(tex, save_key):
-    path = f"tables/{save_key}.tex"
+def save_tex(tex, path):
     Path(path).parent.mkdir(exist_ok=True, parents=True)
     with open(path, "w") as f:
         f.write(tex)
