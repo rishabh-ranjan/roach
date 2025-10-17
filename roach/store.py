@@ -3,7 +3,6 @@ from pathlib import Path
 import struct
 import tempfile
 import time
-from types import SimpleNamespace
 
 import torch
 
@@ -86,4 +85,3 @@ def iter_stores(parent):
 
 
 store = Store()
-scratch = SimpleNamespace()
