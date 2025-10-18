@@ -29,7 +29,6 @@ class Store:
 
     def save(self, obj, key, allow_overwrite=False):
         assert self.store_dir is not None
-
         path = f"{self.store_dir}/{key}.pt"
         if Path(path).exists() and not allow_overwrite:
             raise ValueError(f"key {key} already exists")
@@ -38,7 +37,6 @@ class Store:
 
     def log(self, key, val):
         assert self.store_dir is not None
-
         path = f"{self.store_dir}/{key}.bin"
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         with open(path, "ab") as f:
@@ -48,19 +46,15 @@ class Store:
 
     def load(self, key):
         assert self.store_dir is not None
-
         files = list(Path(self.store_dir).glob(f"{key}.*"))
         if len(files) == 0:
             raise ValueError(f"no files found for key {key}")
         if len(files) > 1:
             raise ValueError(f"multiple files found for key {key}: {files}")
-
         path = files[0]
         fname = Path(path).name
-
         if fname.endswith(".pt"):
             return torch.load(path, map_location="cpu", weights_only=False)
-
         elif fname.endswith(".bin"):
             with open(path, "rb") as f:
                 val_bytes = f.read()

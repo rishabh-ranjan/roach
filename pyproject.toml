@@ -15,6 +15,3 @@ dependencies = [
 [build-system]
 build-backend = "hatchling.build"
 requires = ["hatchling"]
-
-[tool.pixi.pypi-dependencies]
-roach = { path = ".", editable = true }
