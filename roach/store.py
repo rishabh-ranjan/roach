@@ -24,7 +24,7 @@ class Store:
         if store_id is None:
             store_id = make_store_id()
         self.store_id = store_id
-        self.store_dir = f"{parent}/{store_id}"
+        self.store_dir = Path(f"{parent}/{store_id}").expanduser()
         print(f"roach store_dir is {self.store_dir}")
 
     def save(self, obj, key, allow_overwrite=False):
