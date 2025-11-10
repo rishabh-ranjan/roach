@@ -49,6 +49,9 @@ def worker(queue_dir, persist=False, one_task=False):
     # - no interrupt handling: kill with SIGTERM
 
     queue_dir = Path(queue_dir).expanduser()
+    # make state dirs
+    for state in ["queued", "checking", "active", "done", "failed", "paused"]:
+        Path(f"{queue_dir}/{state}").mkdir(parents=True, exist_ok=True)
     worker_id = make_worker_id()
 
     # worker loop
@@ -69,8 +72,7 @@ def worker(queue_dir, persist=False, one_task=False):
 
             # acquire task to check precondition
             try:
-                Path(f"{queue_dir}/.checking").mkdir(exist_ok=True)
-                task_file = task_file.rename(f"{queue_dir}/.checking/{task_id}")
+                task_file = task_file.rename(f"{queue_dir}/checking/{task_id}")
             except FileNotFoundError:
                 # task no longer exists
                 # maybe another worker acquired it
@@ -96,7 +98,6 @@ def worker(queue_dir, persist=False, one_task=False):
 
             # check successful
             # run task
-            Path(f"{queue_dir}/active").mkdir(exist_ok=True)
             task_file = task_file.rename(f"{queue_dir}/active/{task_id}")
 
             def handler(signum, frame):
@@ -157,11 +158,9 @@ def worker(queue_dir, persist=False, one_task=False):
                 else:
                     if proc.poll() == 0:
                         # task completed
-                        Path(f"{queue_dir}/done").mkdir(exist_ok=True)
                         task_file.rename(f"{queue_dir}/done/{task_id}")
                     else:
                         # task failed
-                        Path(f"{queue_dir}/failed").mkdir(exist_ok=True)
                         task_file.rename(f"{queue_dir}/failed/{task_id}")
 
                     if one_task:
