@@ -10,6 +10,7 @@ dependencies = [
 	"torch",
 	"psutil",
 	"strictfire",
+	"yagmail",
 ]
 
 [build-system]

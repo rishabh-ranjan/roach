@@ -8,6 +8,8 @@ import sys
 import time
 import psutil
 
+import yagmail
+
 
 # https://psutil.readthedocs.io/en/latest/index.html#kill-process-tree
 def kill_proc_tree(
@@ -42,7 +44,7 @@ def make_worker_id():
     return f"worker_{now.strftime('%Y%m%d_%H%M%S')}_{hostname}_{pid}_gpus={os.environ.get('CUDA_VISIBLE_DEVICES')}"
 
 
-def worker(queue_dir, persist=False, one_task=False):
+def worker(queue_dir, mailto=None, persist=False, one_task=False):
     # worker is meant to be run in the background
     # hence,
     # - no logging: inspect state directly from queue dir
@@ -53,6 +55,13 @@ def worker(queue_dir, persist=False, one_task=False):
     for state in ["queued", "checking", "active", "done", "failed", "paused"]:
         Path(f"{queue_dir}/{state}").mkdir(parents=True, exist_ok=True)
     worker_id = make_worker_id()
+
+    if mailto is not None:
+        yag = yagmail.SMTP(
+            user="roach.worker",
+            password=os.environ["ROACH_GMAIL_PASSWORD"],
+        )
+        yag.send(mailto, "roach worker started")
 
     # worker loop
     while True:
