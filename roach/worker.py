@@ -44,7 +44,7 @@ def make_worker_id():
     return f"worker_{now.strftime('%Y%m%d_%H%M%S')}_{hostname}_{pid}_gpus={os.environ.get('CUDA_VISIBLE_DEVICES')}"
 
 
-def worker(queue_dir, mailto=None, persist=False, one_task=False):
+def worker(queue_dir, mailto=None, persist=True, one_task=False):
     # worker is meant to be run in the background
     # hence,
     # - no logging: inspect state directly from queue dir
@@ -56,14 +56,14 @@ def worker(queue_dir, mailto=None, persist=False, one_task=False):
         Path(f"{queue_dir}/{state}").mkdir(parents=True, exist_ok=True)
     worker_id = make_worker_id()
 
-    if mailto is not None:
+    if mailto:
         yag = yagmail.SMTP(
             user="roach.worker",
             password=os.environ["ROACH_GMAIL_PASSWORD"],
         )
-        yag.send(mailto, "roach worker started")
 
     # worker loop
+    idle = False
     while True:
         if not Path(f"{queue_dir}/queued").exists():
             # worker can be started before submitting tasks to queue
@@ -72,9 +72,21 @@ def worker(queue_dir, mailto=None, persist=False, one_task=False):
             # snapshot of the queue
             task_file_list = sorted(Path(f"{queue_dir}/queued").iterdir())
 
-        if not persist and len(task_file_list) == 0:
-            # quit to yield slurm job
-            sys.exit(0)
+        if len(task_file_list) == 0:
+            # if active dir is also empty, all tasks are done
+            if not idle and next(Path(f"{queue_dir}/active").iterdir(), None) is None:
+                msg = f"({queue_dir.name}) queued + active = 0"
+                try:
+                    yag.send(mailto, msg)
+                except Exception as e:
+                    print(f"\n[roach.worker] failed to send email: {e}")
+                print("\n[roach.worker] " + msg)
+            idle = True
+            if not persist:
+                # quit to yield slurm job
+                sys.exit(0)
+        else:
+            idle = False
 
         for task_file in task_file_list:
             task_id = Path(task_file).name
@@ -170,6 +182,14 @@ def worker(queue_dir, mailto=None, persist=False, one_task=False):
                         task_file.rename(f"{queue_dir}/done/{task_id}")
                     else:
                         # task failed
+                        if next(Path(f"{queue_dir}/failed").iterdir(), None) is None:
+                            # first failed task
+                            msg = f"({queue_dir.name}) failed >= 1"
+                            try:
+                                yag.send(mailto, msg)
+                            except Exception as e:
+                                print(f"\n[roach.worker] failed to send email: {e}")
+                            print("\n[roach.worker] " + msg)
                         task_file.rename(f"{queue_dir}/failed/{task_id}")
 
                     if one_task:
