@@ -78,7 +78,7 @@ Workers add info to task files,
 for ease of associating tasks with workers.
 
 
-### submit
+### roach.submit
 
 The recommended usage pattern is to use python:
 ```python
@@ -115,7 +115,7 @@ python -m roach.submit /dfs/user/ranjanr/roach/queues/example 'echo hello world'
 ```
 
 
-### worker
+### roach.worker
 
 The basic CLI is:
 ```bash
