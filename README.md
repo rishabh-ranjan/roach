@@ -68,11 +68,11 @@ within the queue directory.
 _Roach workers_ can change task states.
 You can also change task states manually
 by moving task files between state directories.
-Common use cases include:
-- deleting a task file from `active` will kill it (by sending SIGKILL)
+For example,
+- deleting a task file from `active` will kill it (by sending SIGKILL),
 - moving a task file from `active` to `paused` will pause it (by sending SIGSTOP),
-and moving it back to `active` will resume it (by sending SIGCONT).
-- moving a task file from `failed` to `queued` will retry it
+and moving it back to `active` will resume it (by sending SIGCONT), and,
+- moving a task file from `failed` to `queued` will retry it.
 
 Workers add info to task files,
 for ease of associating tasks with workers.
