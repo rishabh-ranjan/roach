@@ -109,38 +109,37 @@ chk = f"{chk_mem} && {chk_ckpt}"
 submit(queue, cmd, chk=chk)
 ```
 
-You can also use the command line interface:
+You can also use the CLI:
 ```bash
 python -m roach.submit /dfs/user/ranjanr/roach/queues/example 'echo hello world'
 ```
 
-## submit
 
-```python
-from roach.submit import submit
+### worker
 
-queue = "~/scratch/roach/queues/example"
-cmd = rf"""
-echo {queue}
-echo hello world
-"""
-chk = submit(queue, cmd)
-
-cmd = "echo world"
-submit(queue, cmd, chk=chk)
-
-chk = "python -c 'import sys, torch; sys.exit(not torch.cuda.is_available())'"
-cmd = "python -c 'import torch; print(torch.cuda.get_device_name())'"
-submit(queue, cmd, chk=chk)
+The basic CLI is:
+```bash
+python -m roach.worker /dfs/user/ranjanr/roach/queues/example &
 ```
 
-```bash
-python -m roach.submit ~/scratch/roach/queues/example 'echo hello world'
-```
+The `&` runs the worker in the background,
+which is the intended usage pattern.
+As its common to run many workers together,
+workers don't print much.
+Worker state can be monitored by inspecting task files in
+`active` and `checking`.
+They can be killed with SIGTERM or by exiting the current shell.
+Any running tasks will be moved back to `queued`.
 
-## worker
-
+The task runs in the same environment as the worker,
+including current directory, conda/pixi environment, any environment variables, etc.
+So, common usage looks like:
 ```bash
-python -m roach.worker ~/scratch/roach/queues/example &
-CUDA_VISIBLE_DEVICES='' python -m roach.worker ~/scratch/roach/queues/example &
+cd <project-dir>
+pixi shell
+# inside the pixi shell
+for i in {0..7}
+do
+    CUDA_VISIBLE_DEVICES=$i python -m roach.worker /dfs/user/ranjanr/roach/queues/example &
+done
 ```
