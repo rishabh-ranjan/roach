@@ -103,7 +103,7 @@ for seed in range(5):
 so the check condition is really that this command exits with error code 0.
 For example, to check that there's enough memory on the GPU and a checkpoint exists:
 ```python
-chk_mem = "python -c 'import sys, torch; sys.exit(not torch.cuda.mem_get_info()[0] > 8e9)'"
+chk_mem = "python -c 'import sys, torch; sys.exit(not (torch.cuda.mem_get_info()[0] > 8e9))'"
 chk_ckpt = "test -f 'seed={seed}_lr={lr}.pt'"
 chk = f"{chk_mem} && {chk_ckpt}"
 submit(queue, cmd, chk=chk)
