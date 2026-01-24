@@ -143,3 +143,129 @@ do
     CUDA_VISIBLE_DEVICES=$i python -m roach.worker /dfs/user/ranjanr/roach/queues/example &
 done
 ```
+
+## roach stores
+
+### saving to a store
+
+```python
+from roach.store import store
+# ...
+
+def main()
+    # ...
+    args = parser.parse_args()
+    store.init(f"~/scratch/roach/stores/{project}")
+    # store.log can save arbitrary objects
+    # it uses torch.save internally
+    store.save(args, "args")
+    # ...
+
+def evaluate(steps, model):
+    # ...
+    # store.log appends to a list of saved values
+    store.log("steps", steps)
+    store.log("val/acc", val_acc)
+    store.log("test/acc", test_acc)
+    store.save(model.state_dict(), f"ckpts/{steps=}.pt")
+```
+
+
+### scanning stores
+
+Example interactive python script for table generation:
+
+```python
+# %%
+import polars as pl
+from roach.store import iter_stores
+
+
+# %%
+parent = "~/scratch/roach/stores/<project>"
+rows = []
+for store_id, store in iter_stores(parent):
+    try:
+        # store.load returns whatever was saved with store.save
+        args = store.load("args")
+
+        # store.load returns torch tensors for store.log keys
+        best_val_idx = store.load("val/acc").argmax()
+        test_acc = store.load("test/acc")[best_val_idx].item()
+
+        # here we extract relevant info
+        row = {
+            "store_id": store_id,
+            "method": args.method,
+            "seed": args.seed,
+            "dataset": args.dataset,
+            "test_acc": test_acc,
+        }
+        rows.append(row)
+
+    except Exception as e:
+        print(f"# error in {store_id}: {e}")
+        print(f"# if its a crashed run, clean up with:")
+        print(f"rm -rf {store.store_dir}")
+
+
+# %%
+# if multiple runs have same config, keep only the last one
+df = (
+    pl.DataFrame(rows)
+    .sort("store_id")
+    .group_by("method", "seed", "dataset")
+    .last()
+    .drop("store_id")
+)
+df
+
+
+# %%
+# some dataframe processing to get method-wise means and stds for each dataset
+df = (
+    df
+    .drop("seed")
+    .group_by("dataset", "method")
+    .agg([
+        pl.col("test_acc").mean().alias("mean"),
+        pl.col("test_acc").std().alias("std"),
+    ])
+    .pivot(on="method", values=["mean", "std"])
+)
+df
+
+
+# %%
+# latex table with columns: dataset, method a, method b
+# for method columns, we show mean +- std as percent
+# and bold the best mean
+tex_rows = []
+for dataset in ["A", "B", "C"]:
+    tex_cells = []
+
+    tex_cells.append(dataset)
+
+    row_dict = df.filter(pl.col("dataset") == dataset).row(named=True)
+    for method in ["a", "b"]:
+        mean = row_dict[f"mean_{method}"]
+        std = row_dict[f"std_{method}"]
+
+        rank = 1
+        for other_method in ["a", "b"]:
+            other_mean = row_dict[f"mean_{other_method}"]
+            if other_mean > mean:
+                rank += 1
+
+        tex_cell = f"{mean*100:.1f}"
+        if rank == 1:
+            tex_cell = r"\bm{" + tex_cell + "}"
+        tex_cell = r"$" + tex_cell + r" \pm " + f"{std*100:.1f}" + r"$"
+        tex_cells.append(tex_cell)
+
+    tex_row = " & ".join(tex_cells) + r" \\"
+    tex_rows.append(tex_row)
+
+tex_table = "\n".join(tex_rows)
+print(tex_table)
+```
