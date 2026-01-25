@@ -29,40 +29,25 @@ def save_tex(tex, path):
 
 def align_tex(tex):
     rows = []
-    cur_row_idx = 0
-    inserts = [[]]
     for line in tex.split("\n"):
-        if "&" not in line:
-            inserts[cur_row_idx].append(line)
-            continue
-        rows.append([cell.strip() for cell in line.split("&")])
-        cur_row_idx += 1
-        inserts.append([])
-    num_cols = max(len(row) for row in rows)
-    extra_cols_list = []
-    for row in rows:
-        extra_cols = 0
-        while len(row) < num_cols:
-            row.insert(0, "")
-            extra_cols += 1
-        extra_cols_list.append(extra_cols)
+        cells = []
+        for cell in line.split("&"):
+            cells.append(cell.strip())
+        rows.append(cells)
+
     col_widths = []
-    for col_idx in range(num_cols):
-        max_width = max(len(row[col_idx]) for row in rows)
-        col_widths.append(max_width)
+    for col_idx in range(len(rows[0])):
+        col_width = max(len(row[col_idx]) for row in rows)
+        col_widths.append(col_width)
+
     out_rows = []
-    for row_idx, row in enumerate(rows):
-        for insert in inserts[row_idx]:
-            out_rows.append(insert)
-        extra_cols = extra_cols_list[row_idx]
+    for row in rows:
         out_cells = []
         for col_idx, cell in enumerate(row):
-            padded_cell = cell.ljust(col_widths[col_idx])
-            out_cells.append(padded_cell)
+            out_cell = cell.rjust(col_widths[col_idx])
+            out_cells.append(out_cell)
         out_row = "  &  ".join(out_cells)
-        out_row = out_row[extra_cols:]
         out_rows.append(out_row)
-    for insert in inserts[len(rows)]:
-        out_rows.append(insert)
     out_tex = "\n".join(out_rows)
+
     return out_tex
