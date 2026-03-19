@@ -85,9 +85,11 @@ def worker(queue_dir, mailto=None, persist=True, one_task=False):
     threading.Thread(target=_watchdog, daemon=True).start()
 
     if mailto:
+        with open("/dfs/user/ranjanr/.roach_gmail", "r") as f:
+            password = f.read().strip()
         yag = yagmail.SMTP(
             user="roach.worker",
-            password=os.environ["ROACH_GMAIL_PASSWORD"],
+            password=password,
         )
 
     # worker loop
