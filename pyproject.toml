@@ -25,7 +25,7 @@ platforms = ["linux-64"]
 roach = { path = ".", editable = true }
 
 [tool.pixi.dependencies]
-python = ">=3.11"
+python = "3.11.*"
 pre-commit = "*"
 
 [tool.pixi.activation]
