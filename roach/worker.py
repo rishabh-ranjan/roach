@@ -48,12 +48,22 @@ def make_worker_id():
 def worker(queue_dir, mailto=None, persist=True, one_task=False):
     queue_dir = Path(queue_dir).expanduser()
     # make state dirs
-    for name in ["queued", "checking", "active", "done", "failed", "paused", "workers"]:
+    for name in [
+        "queued",
+        "checking",
+        "active",
+        "done",
+        "failed",
+        "paused",
+        "idle_workers",
+        "active_workers",
+        "dead_workers",
+    ]:
         Path(f"{queue_dir}/{name}").mkdir(parents=True, exist_ok=True)
     worker_id = make_worker_id()
 
     # --- worker file: log, liveness indicator, and kill switch ---
-    worker_file = Path(f"{queue_dir}/workers/{worker_id}")
+    worker_file = Path(f"{queue_dir}/idle_workers/{worker_id}")
 
     def wlog(msg):
         line = f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg}\n"
@@ -67,7 +77,7 @@ def worker(queue_dir, mailto=None, persist=True, one_task=False):
 
     # default signal handlers (no active task: just clean up and exit)
     def default_handler(signum, frame):
-        worker_file.unlink(missing_ok=True)
+        worker_file.rename(f"{queue_dir}/dead_workers/{worker_id}")
         sys.exit(0)
 
     for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
@@ -114,7 +124,7 @@ def worker(queue_dir, mailto=None, persist=True, one_task=False):
             idle = True
             if not persist:
                 wlog("no tasks, exiting (persist=False)")
-                worker_file.unlink(missing_ok=True)
+                worker_file.rename(f"{queue_dir}/dead_workers/{worker_id}")
                 sys.exit(0)
         else:
             idle = False
@@ -130,6 +140,7 @@ def worker(queue_dir, mailto=None, persist=True, one_task=False):
                 # maybe another worker acquired it
                 continue
 
+            worker_file = worker_file.rename(f"{queue_dir}/active_workers/{worker_id}")
             wlog(f"checking: {task_id}")
 
             # read precondition
@@ -146,7 +157,7 @@ def worker(queue_dir, mailto=None, persist=True, one_task=False):
             def chk_handler(signum, frame):
                 chk_proc.kill()
                 task_file.rename(f"{queue_dir}/queued/{task_id}")
-                worker_file.unlink(missing_ok=True)
+                worker_file.rename(f"{queue_dir}/dead_workers/{worker_id}")
                 sys.exit(0)
 
             for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
@@ -159,6 +170,9 @@ def worker(queue_dir, mailto=None, persist=True, one_task=False):
                 # check failed
                 wlog(f"check failed: {task_id}")
                 task_file.rename(f"{queue_dir}/queued/{task_id}")
+                worker_file = worker_file.rename(
+                    f"{queue_dir}/idle_workers/{worker_id}"
+                )
                 # no active task; restore default handler
                 for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
                     signal.signal(sig, default_handler)
@@ -189,7 +203,7 @@ def worker(queue_dir, mailto=None, persist=True, one_task=False):
                 def proc_handler(signum, frame):
                     kill_proc_tree(proc.pid, signal.SIGKILL)
                     task_file.rename(f"{queue_dir}/queued/{task_id}")
-                    worker_file.unlink(missing_ok=True)
+                    worker_file.rename(f"{queue_dir}/dead_workers/{worker_id}")
                     sys.exit(0)
 
                 for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
@@ -241,10 +255,11 @@ def worker(queue_dir, mailto=None, persist=True, one_task=False):
 
                     if one_task:
                         wlog("exiting (one_task=True)")
-                        worker_file.unlink(missing_ok=True)
+                        worker_file.rename(f"{queue_dir}/dead_workers/{worker_id}")
                         sys.exit(0)
 
-            # restore default handlers between tasks
+            # task done; back to idle
+            worker_file = worker_file.rename(f"{queue_dir}/idle_workers/{worker_id}")
             for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
                 signal.signal(sig, default_handler)
 
