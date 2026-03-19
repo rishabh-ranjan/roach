@@ -184,11 +184,13 @@ class Worker:
             while proc.poll() is None:
                 if not self.task_file.exists():
                     if self.task_path("paused").exists():
+                        self.task_file = self.task_path("paused")
                         kill_proc_tree(proc.pid, signal.SIGSTOP, timeout=0)
                         self.wlog(f"paused: {task_id}")
-                        while self.task_path("paused").exists():
+                        while self.task_file.exists():
                             time.sleep(SLEEP_TIME)
                         if self.task_path("active").exists():
+                            self.task_file = self.task_path("active")
                             kill_proc_tree(proc.pid, signal.SIGCONT, timeout=0)
                             self.wlog(f"resumed: {task_id}")
                         else:
