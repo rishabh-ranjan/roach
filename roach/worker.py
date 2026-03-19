@@ -5,6 +5,7 @@ import signal
 import socket
 import subprocess
 import sys
+import threading
 import time
 import psutil
 
@@ -45,16 +46,43 @@ def make_worker_id():
 
 
 def worker(queue_dir, mailto=None, persist=True, one_task=False):
-    # worker is meant to be run in the background
-    # hence,
-    # - no logging: inspect state directly from queue dir
-    # - no interrupt handling: kill with SIGTERM
-
     queue_dir = Path(queue_dir).expanduser()
     # make state dirs
-    for state in ["queued", "checking", "active", "done", "failed", "paused"]:
-        Path(f"{queue_dir}/{state}").mkdir(parents=True, exist_ok=True)
+    for name in ["queued", "checking", "active", "done", "failed", "paused", "workers"]:
+        Path(f"{queue_dir}/{name}").mkdir(parents=True, exist_ok=True)
     worker_id = make_worker_id()
+
+    # --- worker file: log, liveness indicator, and kill switch ---
+    worker_file = Path(f"{queue_dir}/workers/{worker_id}")
+
+    def wlog(msg):
+        line = f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg}\n"
+        with open(worker_file, "a") as f:
+            f.write(line)
+            f.flush()
+        print(line, end="", flush=True)
+
+    worker_file.touch()
+    wlog(f"started: {worker_id}")
+
+    # default signal handlers (no active task: just clean up and exit)
+    def default_handler(signum, frame):
+        worker_file.unlink(missing_ok=True)
+        sys.exit(0)
+
+    for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+        signal.signal(sig, default_handler)
+
+    # watchdog thread: touch worker file for liveness, send SIGTERM if removed
+    def _watchdog():
+        while True:
+            time.sleep(SLEEP_TIME)
+            os.utime(worker_file)
+            if not worker_file.exists():
+                os.kill(os.getpid(), signal.SIGTERM)
+                return
+
+    threading.Thread(target=_watchdog, daemon=True).start()
 
     if mailto:
         yag = yagmail.SMTP(
@@ -76,14 +104,15 @@ def worker(queue_dir, mailto=None, persist=True, one_task=False):
             # if active dir is also empty, all tasks are done
             if not idle and next(Path(f"{queue_dir}/active").iterdir(), None) is None:
                 msg = f"({queue_dir.name}) queued + active = 0"
+                wlog(msg)
                 try:
                     yag.send(mailto, msg)
                 except Exception as e:
-                    print(f"\n[roach.worker] failed to send email: {e}")
-                print("\n[roach.worker] " + msg)
+                    wlog(f"failed to send email: {e}")
             idle = True
             if not persist:
-                # quit to yield slurm job
+                wlog("no tasks, exiting (persist=False)")
+                worker_file.unlink(missing_ok=True)
                 sys.exit(0)
         else:
             idle = False
@@ -99,6 +128,8 @@ def worker(queue_dir, mailto=None, persist=True, one_task=False):
                 # maybe another worker acquired it
                 continue
 
+            wlog(f"checking: {task_id}")
+
             # read precondition
             with open(task_file, "r") as f:
                 chk = ""
@@ -109,25 +140,32 @@ def worker(queue_dir, mailto=None, persist=True, one_task=False):
 
             # run precondition command
             chk_proc = subprocess.Popen(chk, shell=True)
+
+            def chk_handler(signum, frame):
+                chk_proc.kill()
+                task_file.rename(f"{queue_dir}/queued/{task_id}")
+                worker_file.unlink(missing_ok=True)
+                sys.exit(0)
+
+            for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+                signal.signal(sig, chk_handler)
+
             while chk_proc.poll() is None:
                 time.sleep(SLEEP_TIME)
 
             if chk_proc.poll() != 0:
                 # check failed
+                wlog(f"check failed: {task_id}")
                 task_file.rename(f"{queue_dir}/queued/{task_id}")
+                # no active task; restore default handler
+                for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+                    signal.signal(sig, default_handler)
                 continue
 
             # check successful
             # run task
             task_file = task_file.rename(f"{queue_dir}/active/{task_id}")
-
-            def handler(signum, frame):
-                # re-queue
-                task_file.rename(f"{queue_dir}/queued/{task_id}")
-                sys.exit(0)
-
-            # register handlers
-            signal.signal(signal.SIGTERM, handler)
+            wlog(f"running: {task_id}")
 
             # read task
             with open(task_file, "r") as f:
@@ -146,13 +184,14 @@ def worker(queue_dir, mailto=None, persist=True, one_task=False):
                 f.write(f"\n=== {worker_id} ===\n")
                 proc = subprocess.Popen(cmd, shell=True, stdout=f, stderr=f)
 
-                def handler(signum, frame):
+                def proc_handler(signum, frame):
                     kill_proc_tree(proc.pid, signal.SIGKILL)
                     task_file.rename(f"{queue_dir}/queued/{task_id}")
+                    worker_file.unlink(missing_ok=True)
                     sys.exit(0)
 
-                # kill process family on SIGTERM
-                signal.signal(signal.SIGTERM, handler)
+                for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+                    signal.signal(sig, proc_handler)
 
                 while proc.poll() is None:
                     if not Path(task_file).exists():
@@ -160,6 +199,7 @@ def worker(queue_dir, mailto=None, persist=True, one_task=False):
                         if Path(f"{queue_dir}/paused/{task_id}").exists():
                             # pause the task
                             kill_proc_tree(proc.pid, signal.SIGSTOP, timeout=0)
+                            wlog(f"paused: {task_id}")
                             # pause the worker
                             while Path(f"{queue_dir}/paused/{task_id}").exists():
                                 time.sleep(SLEEP_TIME)
@@ -167,34 +207,44 @@ def worker(queue_dir, mailto=None, persist=True, one_task=False):
                             if Path(f"{queue_dir}/active/{task_id}").exists():
                                 # task was moved back to active; resume it
                                 kill_proc_tree(proc.pid, signal.SIGCONT, timeout=0)
+                                wlog(f"resumed: {task_id}")
                             else:
                                 # task was deleted; kill it and move on
                                 kill_proc_tree(proc.pid, signal.SIGKILL)
+                                wlog(f"killed (deleted while paused): {task_id}")
                                 break
                         else:
                             # task was deleted; kill it and move on
                             kill_proc_tree(proc.pid, signal.SIGKILL)
+                            wlog(f"killed (deleted): {task_id}")
                             break
                     time.sleep(SLEEP_TIME)
                 else:
                     if proc.poll() == 0:
                         # task completed
                         task_file.rename(f"{queue_dir}/done/{task_id}")
+                        wlog(f"done: {task_id}")
                     else:
                         # task failed
                         if next(Path(f"{queue_dir}/failed").iterdir(), None) is None:
                             # first failed task
                             msg = f"({queue_dir.name}) failed >= 1"
+                            wlog(msg)
                             try:
                                 yag.send(mailto, msg)
                             except Exception as e:
-                                print(f"\n[roach.worker] failed to send email: {e}")
-                            print("\n[roach.worker] " + msg)
+                                wlog(f"failed to send email: {e}")
                         task_file.rename(f"{queue_dir}/failed/{task_id}")
+                        wlog(f"failed: {task_id}")
 
                     if one_task:
-                        # quit to yield slurm job
+                        wlog("exiting (one_task=True)")
+                        worker_file.unlink(missing_ok=True)
                         sys.exit(0)
+
+            # restore default handlers between tasks
+            for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+                signal.signal(sig, default_handler)
 
         # no more tasks to run for this snapshot of the queue
         time.sleep(SLEEP_TIME)
