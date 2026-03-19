@@ -12,7 +12,7 @@ def make_task_id():
 def submit(queue_dir, cmd, chk="true"):
     queue_dir = Path(queue_dir).expanduser()
     task_id = make_task_id()
-    task_file = f"{queue_dir}/queued/{task_id}"
+    task_file = f"{queue_dir}/tasks/queued/{task_id}"
     Path(task_file).parent.mkdir(parents=True, exist_ok=True)
 
     with open(task_file, "w") as f:
@@ -20,7 +20,7 @@ def submit(queue_dir, cmd, chk="true"):
         f.write("\n---\n")
         f.write(cmd)
 
-    done_file = f"{queue_dir}/done/{task_id}"
+    done_file = f"{queue_dir}/tasks/done/{task_id}"
     return f"test -f '{done_file}'"
 
 

@@ -7,6 +7,7 @@ import subprocess
 import sys
 import threading
 import time
+import traceback
 import psutil
 
 import yagmail
@@ -36,6 +37,7 @@ def kill_proc_tree(
 
 
 SLEEP_TIME = 1
+SIGNALS = (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)
 
 
 def make_worker_id():
@@ -45,227 +47,231 @@ def make_worker_id():
     return f"worker_{now.strftime('%Y%m%d_%H%M%S')}_{hostname}_{pid}_gpus={os.environ.get('CUDA_VISIBLE_DEVICES')}"
 
 
-def worker(queue_dir, mailto=None, persist=True, one_task=False):
-    queue_dir = Path(queue_dir).expanduser()
-    # make state dirs
-    for name in [
-        "queued",
-        "checking",
-        "active",
-        "done",
-        "failed",
-        "paused",
-        "idle_workers",
-        "active_workers",
-        "dead_workers",
-    ]:
-        Path(f"{queue_dir}/{name}").mkdir(parents=True, exist_ok=True)
-    worker_id = make_worker_id()
+class Worker:
+    def __init__(self, queue_dir, mailto=None, persist=True, one_task=False):
+        self.queue_dir = Path(queue_dir).expanduser()
+        # task state dirs
+        for name in ["queued", "checking", "active", "done", "failed", "paused"]:
+            Path(f"{self.queue_dir}/tasks/{name}").mkdir(parents=True, exist_ok=True)
+        # worker state dirs
+        for name in ["idle", "active", "dead"]:
+            Path(f"{self.queue_dir}/workers/{name}").mkdir(parents=True, exist_ok=True)
 
-    # --- worker file: log, liveness indicator, and kill switch ---
-    worker_file = Path(f"{queue_dir}/idle_workers/{worker_id}")
+        self.worker_id = make_worker_id()
+        self.worker_file = Path(f"{self.queue_dir}/workers/idle/{self.worker_id}")
+        self.mailto = mailto
+        self.persist = persist
+        self.one_task = one_task
+        self.notify_done = True
+        self.notify_failed = True
 
-    def wlog(msg):
+        self.worker_file.touch()
+        self.wlog(f"started: {self.worker_id}")
+
+        for sig in SIGNALS:
+            signal.signal(sig, self.default_handler)
+
+        threading.Thread(target=self._watchdog, daemon=True).start()
+
+        if mailto:
+            with open("/dfs/user/ranjanr/.roach_gmail", "r") as f:
+                password = f.read().strip()
+            self.yag = yagmail.SMTP(user="roach.worker", password=password)
+            self.yag.send(mailto, f"started: {self.worker_id}")
+
+    def no_failed_tasks(self):
+        return next(Path(f"{self.queue_dir}/tasks/failed").iterdir(), None) is None
+
+    def no_active_tasks(self):
+        return next(Path(f"{self.queue_dir}/tasks/active").iterdir(), None) is None
+
+    def change_task_state(self, state):
+        self.task_file = self.task_file.rename(
+            f"{self.queue_dir}/tasks/{state}/{self.task_file.name}"
+        )
+
+    def change_worker_state(self, state):
+        self.worker_file = self.worker_file.rename(
+            f"{self.queue_dir}/workers/{state}/{self.worker_id}"
+        )
+
+    def wlog(self, msg, mail=False):
         line = f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg}\n"
-        with open(worker_file, "a") as f:
+        with open(self.worker_file, "a") as f:
             f.write(line)
             f.flush()
         print(line, end="", flush=True)
+        if mail and self.mailto:
+            try:
+                self.yag.send(self.mailto, msg)
+            except Exception as e:
+                self.wlog(f"failed to send email: {e}")
 
-    worker_file.touch()
-    wlog(f"started: {worker_id}")
-
-    # default signal handlers (no active task: just clean up and exit)
-    def default_handler(signum, frame):
-        worker_file.rename(f"{queue_dir}/dead_workers/{worker_id}")
+    def die(self):
+        self.change_worker_state("dead")
         sys.exit(0)
 
-    for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
-        signal.signal(sig, default_handler)
+    def default_handler(self, signum, frame):
+        self.die()
 
-    # watchdog thread: touch worker file for liveness, send SIGTERM if removed
-    def _watchdog():
+    def _watchdog(self):
         while True:
             time.sleep(SLEEP_TIME)
-            os.utime(worker_file)
-            if not worker_file.exists():
+            os.utime(self.worker_file)
+            if not self.worker_file.exists():
                 os.kill(os.getpid(), signal.SIGTERM)
                 return
 
-    threading.Thread(target=_watchdog, daemon=True).start()
+    def check_precondition(self):
+        """Run precondition. Returns True if passed, re-queues on failure."""
+        with open(self.task_file, "r") as f:
+            chk = ""
+            for line in f:
+                if line.startswith("---"):
+                    break
+                chk += line
 
-    if mailto:
-        with open("/dfs/user/ranjanr/.roach_gmail", "r") as f:
-            password = f.read().strip()
-        yag = yagmail.SMTP(
-            user="roach.worker",
-            password=password,
-        )
+        chk_proc = subprocess.Popen(chk, shell=True)
 
-    # worker loop
-    idle = False
-    while True:
-        if not Path(f"{queue_dir}/queued").exists():
-            # worker can be started before submitting tasks to queue
-            task_file_list = []
-        else:
-            # snapshot of the queue
-            task_file_list = sorted(Path(f"{queue_dir}/queued").iterdir())
+        def chk_handler(signum, frame):
+            chk_proc.kill()
+            self.change_task_state("queued")
+            self.die()
 
-        if len(task_file_list) == 0:
-            # if active dir is also empty, all tasks are done
-            if not idle and next(Path(f"{queue_dir}/active").iterdir(), None) is None:
-                msg = f"({queue_dir.name}) queued + active = 0"
-                wlog(msg)
-                try:
-                    yag.send(mailto, msg)
-                except Exception as e:
-                    wlog(f"failed to send email: {e}")
-            idle = True
-            if not persist:
-                wlog("no tasks, exiting (persist=False)")
-                worker_file.rename(f"{queue_dir}/dead_workers/{worker_id}")
-                sys.exit(0)
-        else:
-            idle = False
+        for sig in SIGNALS:
+            signal.signal(sig, chk_handler)
 
-        for task_file in task_file_list:
-            task_id = Path(task_file).name
+        while chk_proc.poll() is None:
+            time.sleep(SLEEP_TIME)
 
-            # acquire task to check precondition
-            try:
-                task_file = task_file.rename(f"{queue_dir}/checking/{task_id}")
-            except FileNotFoundError:
-                # task no longer exists
-                # maybe another worker acquired it
-                continue
+        if chk_proc.poll() != 0:
+            self.wlog(f"check failed: {self.task_file.name}")
+            self.change_task_state("queued")
+            return False
+        return True
 
-            worker_file = worker_file.rename(f"{queue_dir}/active_workers/{worker_id}")
-            wlog(f"checking: {task_id}")
+    def task_path(self, state):
+        return Path(f"{self.queue_dir}/tasks/{state}/{self.task_file.name}")
 
-            # read precondition
-            with open(task_file, "r") as f:
-                chk = ""
-                for line in f:
-                    if line.startswith("---"):
-                        break
-                    chk += line
+    def run_task(self):
+        """Move task to active and execute it."""
+        self.change_task_state("active")
+        task_id = self.task_file.name
+        self.wlog(f"running: {task_id}")
 
-            # run precondition command
-            chk_proc = subprocess.Popen(chk, shell=True)
+        with open(self.task_file, "r") as f:
+            for line in f:
+                if line.startswith("---"):
+                    break
+            cmd = ""
+            for line in f:
+                if line.startswith("==="):
+                    break
+                cmd += line
 
-            def chk_handler(signum, frame):
-                chk_proc.kill()
-                task_file.rename(f"{queue_dir}/queued/{task_id}")
-                worker_file.rename(f"{queue_dir}/dead_workers/{worker_id}")
-                sys.exit(0)
+        with open(self.task_file, "a", buffering=1) as f:
+            f.write(f"\n=== {self.worker_id} ===\n")
+            proc = subprocess.Popen(cmd, shell=True, stdout=f, stderr=f)
 
-            for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
-                signal.signal(sig, chk_handler)
+            def proc_handler(signum, frame):
+                kill_proc_tree(proc.pid, signal.SIGKILL)
+                self.change_task_state("queued")
+                self.die()
 
-            while chk_proc.poll() is None:
+            for sig in SIGNALS:
+                signal.signal(sig, proc_handler)
+
+            while proc.poll() is None:
+                if not self.task_file.exists():
+                    if self.task_path("paused").exists():
+                        kill_proc_tree(proc.pid, signal.SIGSTOP, timeout=0)
+                        self.wlog(f"paused: {task_id}")
+                        while self.task_path("paused").exists():
+                            time.sleep(SLEEP_TIME)
+                        if self.task_path("active").exists():
+                            kill_proc_tree(proc.pid, signal.SIGCONT, timeout=0)
+                            self.wlog(f"resumed: {task_id}")
+                        else:
+                            kill_proc_tree(proc.pid, signal.SIGKILL)
+                            self.wlog(f"killed (deleted while paused): {task_id}")
+                            return
+                    else:
+                        kill_proc_tree(proc.pid, signal.SIGKILL)
+                        self.wlog(f"killed (deleted): {task_id}")
+                        return
                 time.sleep(SLEEP_TIME)
 
-            if chk_proc.poll() != 0:
-                # check failed
-                wlog(f"check failed: {task_id}")
-                task_file.rename(f"{queue_dir}/queued/{task_id}")
-                worker_file = worker_file.rename(
-                    f"{queue_dir}/idle_workers/{worker_id}"
-                )
-                # no active task; restore default handler
-                for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
-                    signal.signal(sig, default_handler)
+        # proc finished
+        if proc.poll() == 0:
+            self.change_task_state("done")
+            self.wlog(f"done: {task_id}")
+        else:
+            self.change_task_state("failed")
+            self.wlog(f"failed: {task_id}", mail=self.notify_failed)
+            self.notify_failed = False
+
+        if self.one_task:
+            self.wlog("exiting (one_task=True)")
+            self.die()
+
+    def run(self):
+        try:
+            self._loop()
+        except Exception:
+            self.wlog(traceback.format_exc())
+            self.die()
+
+    def acquire_task(self):
+        """Pick the first queued task whose precondition passes. Returns True if found."""
+        queued_dir = Path(f"{self.queue_dir}/tasks/queued")
+        if not queued_dir.exists():
+            return False
+
+        for self.task_file in sorted(queued_dir.iterdir()):
+            try:
+                self.change_task_state("checking")
+            except FileNotFoundError:
                 continue
 
-            # check successful
-            # run task
-            task_file = task_file.rename(f"{queue_dir}/active/{task_id}")
-            wlog(f"running: {task_id}")
+            self.change_worker_state("active")
+            self.wlog(f"checking: {self.task_file.name}")
 
-            # read task
-            with open(task_file, "r") as f:
-                for line in f:
-                    if line.startswith("---"):
-                        break
-                cmd = ""
-                for line in f:
-                    if line.startswith("==="):
-                        break
-                    cmd += line
+            if self.check_precondition():
+                return True
 
-            # run task
-            # line buffering
-            with open(task_file, "a", buffering=1) as f:
-                f.write(f"\n=== {worker_id} ===\n")
-                proc = subprocess.Popen(cmd, shell=True, stdout=f, stderr=f)
+            self.change_worker_state("idle")
+            for sig in SIGNALS:
+                signal.signal(sig, self.default_handler)
 
-                def proc_handler(signum, frame):
-                    kill_proc_tree(proc.pid, signal.SIGKILL)
-                    task_file.rename(f"{queue_dir}/queued/{task_id}")
-                    worker_file.rename(f"{queue_dir}/dead_workers/{worker_id}")
-                    sys.exit(0)
+        return False
 
-                for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
-                    signal.signal(sig, proc_handler)
+    def _loop(self):
+        while True:
+            if self.no_failed_tasks():
+                self.notify_failed = True
 
-                while proc.poll() is None:
-                    if not Path(task_file).exists():
-                        # task file was moved
-                        if Path(f"{queue_dir}/paused/{task_id}").exists():
-                            # pause the task
-                            kill_proc_tree(proc.pid, signal.SIGSTOP, timeout=0)
-                            wlog(f"paused: {task_id}")
-                            # pause the worker
-                            while Path(f"{queue_dir}/paused/{task_id}").exists():
-                                time.sleep(SLEEP_TIME)
-                            # resume the worker
-                            if Path(f"{queue_dir}/active/{task_id}").exists():
-                                # task was moved back to active; resume it
-                                kill_proc_tree(proc.pid, signal.SIGCONT, timeout=0)
-                                wlog(f"resumed: {task_id}")
-                            else:
-                                # task was deleted; kill it and move on
-                                kill_proc_tree(proc.pid, signal.SIGKILL)
-                                wlog(f"killed (deleted while paused): {task_id}")
-                                break
-                        else:
-                            # task was deleted; kill it and move on
-                            kill_proc_tree(proc.pid, signal.SIGKILL)
-                            wlog(f"killed (deleted): {task_id}")
-                            break
-                    time.sleep(SLEEP_TIME)
-                else:
-                    if proc.poll() == 0:
-                        # task completed
-                        task_file.rename(f"{queue_dir}/done/{task_id}")
-                        wlog(f"done: {task_id}")
-                    else:
-                        # task failed
-                        if next(Path(f"{queue_dir}/failed").iterdir(), None) is None:
-                            # first failed task
-                            msg = f"({queue_dir.name}) failed >= 1"
-                            wlog(msg)
-                            try:
-                                yag.send(mailto, msg)
-                            except Exception as e:
-                                wlog(f"failed to send email: {e}")
-                        task_file.rename(f"{queue_dir}/failed/{task_id}")
-                        wlog(f"failed: {task_id}")
+            if self.acquire_task():
+                self.notify_done = True
+                self.run_task()
+                self.change_worker_state("idle")
+                for sig in SIGNALS:
+                    signal.signal(sig, self.default_handler)
+            else:
+                if self.no_active_tasks():
+                    self.wlog(
+                        f"({self.queue_dir.name}) queued + active = 0",
+                        mail=self.notify_done,
+                    )
+                    self.notify_done = False
+                if not self.persist:
+                    self.wlog("no tasks, exiting (persist=False)")
+                    self.die()
 
-                    if one_task:
-                        wlog("exiting (one_task=True)")
-                        worker_file.rename(f"{queue_dir}/dead_workers/{worker_id}")
-                        sys.exit(0)
+            time.sleep(SLEEP_TIME)
 
-            # task done; back to idle
-            worker_file = worker_file.rename(f"{queue_dir}/idle_workers/{worker_id}")
-            for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
-                signal.signal(sig, default_handler)
 
-        # no more tasks to run for this snapshot of the queue
-        time.sleep(SLEEP_TIME)
-        continue
+def worker(queue_dir, mailto=None, persist=True, one_task=False):
+    Worker(queue_dir, mailto, persist, one_task).run()
 
 
 if __name__ == "__main__":
