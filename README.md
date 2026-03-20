@@ -17,13 +17,9 @@ intended primarily for use by close collaborators and me.
 ## install
 
 ```bash
-uv pip install git+https://github.com/rishabh-ranjan/roach
-```
-
-```bash
 git clone https://github.com/rishabh-ranjan/roach
 cd roach
-uv pip install -e .
+pixi install
 ```
 
 ## overview
@@ -54,16 +50,22 @@ _Roach queues_ are directories,
 e.g. `/dfs/user/ranjanr/roach/queues/<queue_name>`.
 Keeping queues on `/dfs` means that
 tasks sync across all machines on the SNAP cluster.
-Task files have a _roach state_,
-which can be one of:
-- `queued`: task is waiting to be picked up by a worker,
-- `checking`: the precondition check command is being run by a worker,
-- `active`: the task command is being run by a worker,
-- `done`: the task command completed successfully,
-- `failed`: the task command failed, or,
-- `paused`: the task is paused by the user.
-Task files are grouped into _roach state directories_
-within the queue directory.
+
+Queue directory structure:
+```
+queue_dir/
+  tasks/            # task states
+    queued/         #   waiting to be picked up
+    checking/       #   precondition being checked
+    active/         #   running
+    done/           #   completed successfully
+    failed/         #   failed
+    paused/         #   paused by user
+  workers/          # worker states
+    idle/           #   waiting for tasks
+    active/         #   running a task
+    dead/           #   exited
+```
 
 _Roach workers_ can change task states.
 You can also change task states manually
@@ -76,6 +78,10 @@ and moving it back to `active` will resume it (by sending SIGCONT), and,
 
 Workers add info to task files,
 for ease of associating tasks with workers.
+
+Each worker creates a file for itself in the `workers/` directory.
+The worker file serves as a log, a liveness indicator (touched every second),
+and a kill switch (removing it gracefully kills the worker and re-queues the active task).
 
 
 ### roach.submit
@@ -124,12 +130,6 @@ python -m roach.worker /dfs/user/ranjanr/roach/queues/example &
 
 The `&` runs the worker in the background,
 which is the intended usage pattern.
-As its common to run many workers together,
-workers don't print much.
-Worker state can be monitored by inspecting task files in
-`active` and `checking`.
-They can be killed with SIGTERM or by exiting the current shell.
-Any running tasks will be moved back to `queued`.
 
 The task runs in the same environment as the worker,
 including current directory, conda/pixi environment, any environment variables, etc.
@@ -142,6 +142,11 @@ for i in {0..7}
 do
     CUDA_VISIBLE_DEVICES=$i python -m roach.worker /dfs/user/ranjanr/roach/queues/example &
 done
+```
+
+Workers optionally send email notifications (on idle, first failure, and startup):
+```bash
+python -m roach.worker /dfs/user/ranjanr/roach/queues/example --mailto=user@example.com &
 ```
 
 ## roach stores
