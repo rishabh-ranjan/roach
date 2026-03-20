@@ -117,10 +117,13 @@ class Worker:
     def _watchdog(self):
         while True:
             time.sleep(SLEEP_TIME)
-            os.utime(self.worker_file)
-            if not self.worker_file.exists():
-                os.kill(os.getpid(), signal.SIGTERM)
-                return
+            try:
+                os.utime(self.worker_file)
+            except FileNotFoundError:
+                # could be a race with main thread rename, or genuine removal
+                if not self.worker_file.exists():
+                    os.kill(os.getpid(), signal.SIGTERM)
+                    return
 
     def check_precondition(self):
         """Run precondition. Returns True if passed, re-queues on failure."""
