@@ -172,39 +172,41 @@ class Worker:
                     break
                 cmd += line
 
-        with open(self.task_file, "a", buffering=1) as f:
-            f.write(f"\n=== {self.worker_id} ===\n")
-            proc = subprocess.Popen(cmd, shell=True, stdout=f, stderr=f)
+        f = open(self.task_file, "a")
+        f.write(f"\n=== {self.worker_id} ===\n")
+        f.flush()
+        proc = subprocess.Popen(cmd, shell=True, stdout=f, stderr=f)
+        f.close()  # subprocess has its own fd
 
-            def proc_handler(signum, frame):
-                kill_proc_tree(proc.pid, signal.SIGKILL)
-                self.change_task_state("queued")
-                self.die()
+        def proc_handler(signum, frame):
+            kill_proc_tree(proc.pid, signal.SIGKILL)
+            self.change_task_state("queued")
+            self.die()
 
-            for sig in SIGNALS:
-                signal.signal(sig, proc_handler)
+        for sig in SIGNALS:
+            signal.signal(sig, proc_handler)
 
-            while proc.poll() is None:
-                if not self.task_file.exists():
-                    if self.task_path("paused").exists():
-                        self.task_file = self.task_path("paused")
-                        kill_proc_tree(proc.pid, signal.SIGSTOP, timeout=0)
-                        self.wlog(f"paused: {task_id}")
-                        while self.task_file.exists():
-                            time.sleep(SLEEP_TIME)
-                        if self.task_path("active").exists():
-                            self.task_file = self.task_path("active")
-                            kill_proc_tree(proc.pid, signal.SIGCONT, timeout=0)
-                            self.wlog(f"resumed: {task_id}")
-                        else:
-                            kill_proc_tree(proc.pid, signal.SIGKILL)
-                            self.wlog(f"killed (deleted while paused): {task_id}")
-                            return
+        while proc.poll() is None:
+            if not self.task_file.exists():
+                if self.task_path("paused").exists():
+                    self.task_file = self.task_path("paused")
+                    kill_proc_tree(proc.pid, signal.SIGSTOP, timeout=0)
+                    self.wlog(f"paused: {task_id}")
+                    while self.task_file.exists():
+                        time.sleep(SLEEP_TIME)
+                    if self.task_path("active").exists():
+                        self.task_file = self.task_path("active")
+                        kill_proc_tree(proc.pid, signal.SIGCONT, timeout=0)
+                        self.wlog(f"resumed: {task_id}")
                     else:
                         kill_proc_tree(proc.pid, signal.SIGKILL)
-                        self.wlog(f"killed (deleted): {task_id}")
+                        self.wlog(f"killed (deleted while paused): {task_id}")
                         return
-                time.sleep(SLEEP_TIME)
+                else:
+                    kill_proc_tree(proc.pid, signal.SIGKILL)
+                    self.wlog(f"killed (deleted): {task_id}")
+                    return
+            time.sleep(SLEEP_TIME)
 
         # proc finished
         if proc.poll() == 0:
