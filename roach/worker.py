@@ -63,7 +63,6 @@ class Worker:
         self.persist = persist
         self.one_task = one_task
         self.notify_done = True
-        self.notify_failed = True
 
         self.worker_file.touch()
         self.wlog(f"started: {self.worker_id}")
@@ -78,9 +77,6 @@ class Worker:
                 password = f.read().strip()
             self.yag = yagmail.SMTP(user="roach.worker", password=password)
             self.yag.send(mailto, f"started: {self.worker_id}")
-
-    def no_failed_tasks(self):
-        return next(Path(f"{self.queue_dir}/tasks/failed").iterdir(), None) is None
 
     def no_active_tasks(self):
         return next(Path(f"{self.queue_dir}/tasks/active").iterdir(), None) is None
@@ -214,8 +210,7 @@ class Worker:
             self.wlog(f"done: {task_id}")
         else:
             self.change_task_state("failed")
-            self.wlog(f"failed: {task_id}", mail=self.notify_failed)
-            self.notify_failed = False
+            self.wlog(f"failed: {task_id}", mail=True)
 
         if self.one_task:
             self.wlog("exiting (one_task=True)")
@@ -254,9 +249,6 @@ class Worker:
 
     def _loop(self):
         while True:
-            if self.no_failed_tasks():
-                self.notify_failed = True
-
             if self.acquire_task():
                 self.notify_done = True
                 self.run_task()
