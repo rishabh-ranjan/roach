@@ -104,7 +104,10 @@ class Worker:
                 self.wlog(f"failed to send email: {e}")
 
     def die(self):
-        self.change_worker_state("dead")
+        try:
+            self.change_worker_state("dead")
+        except FileNotFoundError:
+            pass  # worker file already removed or moved
         sys.exit(0)
 
     def default_handler(self, signum, frame):
@@ -256,10 +259,10 @@ class Worker:
                 for sig in SIGNALS:
                     signal.signal(sig, self.default_handler)
             else:
-                if self.no_active_tasks():
+                if self.notify_done and self.no_active_tasks():
                     self.wlog(
                         f"({self.queue_dir.name}) queued + active = 0",
-                        mail=self.notify_done,
+                        mail=True,
                     )
                     self.notify_done = False
                 if not self.persist:
