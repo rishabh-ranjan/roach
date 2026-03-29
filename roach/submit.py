@@ -9,7 +9,9 @@ def make_task_id():
     return f"task_{now.strftime('%Y%m%d_%H%M%S')}_{nanos}"
 
 
-def submit(queue_dir, cmd, chk="true"):
+def submit(queue_dir, cmd, chk=None):
+    if chk is None:
+        chk = "true"
     queue_dir = Path(queue_dir).expanduser()
     task_id = make_task_id()
     task_file = f"{queue_dir}/tasks/queued/{task_id}"
