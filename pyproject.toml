@@ -17,7 +17,7 @@ dependencies = [
 build-backend = "hatchling.build"
 requires = ["hatchling"]
 
-[tool.pixi.project]
+[tool.pixi.workspace]
 channels = ["conda-forge", "pytorch"]
 platforms = ["linux-64"]
 
