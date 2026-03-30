@@ -92,7 +92,7 @@ class Worker:
         )
 
     def wlog(self, msg, mail=False):
-        line = f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg}\n"
+        line = f"[{self.worker_id} | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg}\n"
         with open(self.worker_file, "a") as f:
             f.write(line)
             f.flush()
