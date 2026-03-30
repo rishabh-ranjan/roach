@@ -213,7 +213,7 @@ class Worker:
             self.wlog(f"done: {task_id}")
         else:
             self.change_task_state("failed")
-            self.wlog(f"failed: {task_id}", mail=True)
+            self.wlog(f"({self.queue_dir.name}) failed: {task_id}", mail=True)
 
         if self.one_task:
             self.wlog("exiting (one_task=True)")
