@@ -1,3 +1,5 @@
+Deprecation note: thanks to Claude Code, roach is now obsolete.
+
 # roach -- fearless experiment management
 
 Per [wikipedia](https://en.wikipedia.org/wiki/Cockroach#Hardiness), roaches:
