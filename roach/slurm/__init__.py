@@ -15,8 +15,11 @@ where things live are arguments too. What is *not* agnostic, deliberately, is
 env.sh and the presets -- those describe this cluster and this user.
 """
 
+# _submit rather than submit: a module and the function it exports cannot share
+# a name, or the re-export below shadows the module and `import roach.slurm.submit`
+# quietly hands you the function instead.
 from roach.slurm.resources import AMPERE, AMPERE_LO, BLACKWELL, Resources
-from roach.slurm.submit import Job, check_args, submit, timestamp
+from roach.slurm._submit import Job, check_args, submit, timestamp
 from roach.slurm.target import resolve
 
 __all__ = [

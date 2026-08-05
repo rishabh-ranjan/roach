@@ -14,8 +14,8 @@ import json
 import pytest
 
 from roach.slurm import Resources, check_args, resolve, timestamp
-from roach.slurm.submit import installed_source
-from roach.slurm.submit import submit as submit_fn
+from roach.slurm._submit import installed_source
+from roach.slurm._submit import submit as submit_fn
 
 
 def sample(a: int, b: str, c: list[int], run_id: str) -> None:  # noqa: ARG001
@@ -23,9 +23,9 @@ def sample(a: int, b: str, c: list[int], run_id: str) -> None:  # noqa: ARG001
 
 
 def test_resolve_requires_module_attr():
-    assert resolve("roach.slurm.submit:timestamp") is timestamp
+    assert resolve("roach.slurm._submit:timestamp") is timestamp
     with pytest.raises(ValueError):
-        resolve("roach.slurm.submit")
+        resolve("roach.slurm._submit")
 
 
 def test_timestamp_has_no_characters_that_break_wandb_or_cargo():
@@ -105,7 +105,7 @@ def test_a_git_install_reports_the_commit_it_was_built_from(monkeypatch):
             )
 
     # patched on the stdlib module: submit.py resolves it at call time, and
-    # `roach.slurm.submit` is the *function* (the package re-exports it), so
+    # `roach.slurm._submit` is the *function* (the package re-exports it), so
     # there is no module attribute to patch instead.
     monkeypatch.setattr(importlib.metadata, "distribution", lambda _: Dist)
     assert installed_source("roach") == (
