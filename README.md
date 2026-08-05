@@ -1,4 +1,5 @@
-Deprecation note: thanks to Claude Code, roach is now obsolete.
+Deprecation note: the original three frameworks are obsolete, thanks to
+Claude Code. `roach.slurm` is not -- see [roach/slurm/README.md](roach/slurm/README.md).
 
 # roach -- fearless experiment management
 
@@ -26,7 +27,13 @@ pixi install
 
 ## overview
 
-`roach` houses 3 independent frameworks:
+`roach` houses 4 independent frameworks:
+
+0. roach slurm (`roach.slurm` module):
+run a python function on slurm -- one job, one rank per GPU, resumable across
+preemption. **[Start here](roach/slurm/README.md)**; the three below are the
+older, deprecated ones.
+
 
 1. roach queues (`roach.submit` and `roach.worker` modules):
 painless task queing and execution across heterogeneous resources and workloads
