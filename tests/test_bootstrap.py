@@ -195,13 +195,13 @@ def test_a_killed_builder_leaves_a_recoverable_clone(rig):
     proc.wait()
 
     clone = rig.clones / f"repo-{sha}"
-    assert not (clone / ".roach-ready").exists()
-    assert Path(f"{clone}.partial").is_dir()
+    assert clone.is_dir(), "the interrupted build left nothing to recover from"
+    assert not (clone / ".roach-ready").exists(), "published a half-built clone"
+    assert not (clone / "built.txt").exists()
 
     out = rig.run(rig.job("after", sha), 1201)
     assert out.returncode == 0, out.stderr
     assert (clone / ".roach-ready").is_file()
-    assert not Path(f"{clone}.partial").exists()
     assert (clone / "built.txt").is_file()
 
 

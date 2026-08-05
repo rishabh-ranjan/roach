@@ -57,22 +57,27 @@ prepare_repo() {
 # needs nothing built.
 prepare_roach() { :; }
 
-# Whoever takes the lock builds in <dir>.partial and publishes it with a rename,
-# so <dir> is either absent or complete -- never half-built. A builder killed
-# mid-flight drops the lock (flock releases when the fd closes) and leaves only
-# the .partial, which the next holder wipes. Late arrivals block here for the
-# one build, then find the marker and fall straight through.
+# Whoever takes the lock builds; .roach-ready, written last, is what publishes
+# the result. A builder killed mid-flight drops the lock (flock releases when
+# the fd closes) and leaves an unmarked directory, which the next holder wipes.
+# Late arrivals block here for the one build, then find the marker and fall
+# straight through.
+#
+# Built in place, not staged and renamed: the environment is keyed to the path
+# it was installed at, so moving the project afterwards makes pixi reinstall the
+# editable path dependency -- for a maturin project, a full recompile, done by
+# every rank at once, colliding in uv's shared build cache. Atomicity is the
+# marker's job; the directory itself never moves.
 clone_at_commit() {  # <dir> <url> <commit> <prepare-fn>
     local dir=$1 url=$2 commit=$3 prepare=$4
     exec 9>"$dir.lock"
     flock 9
     if [[ ! -f $dir/.roach-ready ]]; then
         echo "preparing $dir"
-        rm -rf "$dir.partial"
-        git_clone "$url" "$commit" "$dir.partial"
-        ( cd "$dir.partial" && "$prepare" )
-        touch "$dir.partial/.roach-ready"
-        mv "$dir.partial" "$dir"
+        rm -rf "$dir"
+        git_clone "$url" "$commit" "$dir"
+        ( cd "$dir" && "$prepare" )
+        touch "$dir/.roach-ready"
     fi
     # Claim it before dropping the lock, so the reaper -- which takes the same
     # lock -- cannot see an unused clone that a job is in the middle of adopting.
