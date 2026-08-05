@@ -63,6 +63,15 @@ cpus-per-gpu limit for non-exclusive jobs, why an explicit `--mem` gets you
 what to build (`setup`), where things live (`*_root`), what to run (`target`) --
 is an argument.
 
+## Tests
+
+`pixi run test`. They cover the pure functions -- target resolution, the
+argument check, resource shapes, the placeholders the script and `submit()` must
+agree on, and the two environment flags that mean opposite things at their two
+layers (`--export=NONE` keeps the submitting shell out of the job;
+`srun --export=ALL` lets the job's own environment reach its tasks). Each one is
+a mistake that cost real time on a cluster.
+
 ## Consuming it
 
 Depend on roach by pinned commit, so a run cannot change because roach moved:

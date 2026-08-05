@@ -94,14 +94,23 @@ def roach_source() -> tuple[str, str]:
     root = Path(__file__).resolve().parents[2]
     if (root / ".git").is_dir():
         return preflight(root)  # a working checkout: same rules as the project
+    return installed_source("roach")
+
+
+def installed_source(package: str) -> tuple[str, str]:
+    """(repo url, commit) of a package installed from git.
+
+    pip and pixi record it in PEP 610 direct_url.json, which is the only way to
+    know what an installed copy actually is.
+    """
     info = json.loads(
-        importlib.metadata.distribution("roach").read_text("direct_url.json") or "{}"
+        importlib.metadata.distribution(package).read_text("direct_url.json") or "{}"
     )
     commit = info.get("vcs_info", {}).get("commit_id")
     if not commit:
         raise RuntimeError(
-            "cannot tell which roach commit is running: install it from git "
-            "(pip/pixi record the commit) or use a checkout"
+            f"cannot tell which {package} commit is running: install it from git "
+            "(pip and pixi record the commit) or work from a checkout"
         )
     return info["url"], commit
 
