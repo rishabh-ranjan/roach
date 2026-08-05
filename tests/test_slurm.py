@@ -139,6 +139,24 @@ def test_every_placeholder_in_the_scripts_is_one_submit_fills():
     assert used == filled
 
 
+def test_no_placeholder_sits_inside_a_comment():
+    """`setup` is spliced in verbatim, one command per line. A placeholder named
+    in a comment gets the same treatment: the first line stays commented out and
+    every line after it breaks out and runs as garbage -- which is a two-command
+    setup silently corrupted, and a single-command one working fine."""
+    import re
+    from importlib.resources import files
+
+    for name in ("bootstrap.sh", "env.sh"):
+        text = files("roach.slurm").joinpath(name).read_text()
+        bad = [
+            line
+            for line in text.splitlines()
+            if line.lstrip().startswith("#") and re.search(r"@[A-Z_]+@", line)
+        ]
+        assert not bad, f"{name}: {bad}"
+
+
 def test_the_job_scripts_take_no_configuration_from_the_environment():
     """A job's environment is what submit() put there. A ``${VAR:-default}`` is
     a knob nobody passed, silently answered by whatever the node exported --

@@ -48,8 +48,10 @@ prepare_repo() {
     # pixi.lock is gitignored, so the first job at this commit solves the
     # environment and every later one inherits that solve from the clone.
     pixi install
-    # Whatever this project needs built before its ranks start (@SETUP@ is the
-    # submitter's `setup` argument; empty is fine).
+    # Whatever this project needs built before its ranks start: the submitter's
+    # `setup` argument, one command per line, empty is fine. Naming the
+    # placeholder in this comment would splice the commands into it, and every
+    # line after the first would break out and run as garbage.
     @SETUP@
 }
 
