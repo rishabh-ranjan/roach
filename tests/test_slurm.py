@@ -125,15 +125,33 @@ def test_an_install_with_no_git_provenance_is_an_error(monkeypatch):
         installed_source("roach")
 
 
-def test_every_placeholder_in_the_script_is_one_submit_fills():
+def test_every_placeholder_in_the_scripts_is_one_submit_fills():
     """A placeholder nobody fills reaches the compute node as a literal @NAME@,
     and fails there rather than here."""
     import re
     from importlib.resources import files
 
-    script = files("roach.slurm").joinpath("bootstrap.sh").read_text()
+    used = set()
+    for name in ("bootstrap.sh", "env.sh"):
+        text = files("roach.slurm").joinpath(name).read_text()
+        used |= set(re.findall(r"@[A-Z_]+@", text))
     filled = set(re.findall(r'"(@[A-Z_]+@)"', inspect.getsource(submit_fn)))
-    assert set(re.findall(r"@[A-Z_]+@", script)) == filled
+    assert used == filled
+
+
+def test_the_job_scripts_take_no_configuration_from_the_environment():
+    """A job's environment is what submit() put there. A ``${VAR:-default}`` is
+    a knob nobody passed, silently answered by whatever the node exported --
+    which is how the same submission produces two different runs."""
+    import re
+    from importlib.resources import files
+
+    # who we are, and what slurm tells the job about itself: not configuration
+    runtime = {"USER", "SLURM_RESTART_COUNT"}
+    for name in ("bootstrap.sh", "env.sh"):
+        text = files("roach.slurm").joinpath(name).read_text()
+        read = set(re.findall(r"\$\{([A-Z_]+):-", text))
+        assert read <= runtime, f"{name} reads {sorted(read - runtime)} from the env"
 
 
 def test_job_env_is_not_inherited():

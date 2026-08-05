@@ -4,6 +4,7 @@
 
     submit("mypkg.train:main", args={...}, resources=AMPERE, name="run",
            repo_root=..., log_root=..., clone_root=..., secrets_dir=...,
+           clone_ttl_days=7, omp_num_threads=8,
            setup=("pixi run build-sampler",))
 
 The job clones the commit you submitted from, builds its environment on the

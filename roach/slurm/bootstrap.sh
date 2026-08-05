@@ -84,10 +84,11 @@ clone_at_commit() {  # <dir> <url> <commit> <prepare-fn>
 
 # Nothing deletes a clone when a job ends any more -- it is shared, and the next
 # job at that commit wants it. Sweep instead: a clone goes once no live job
-# holds it and nothing has touched it for ROACH_CLONE_TTL_DAYS. Skipped entirely
-# if squeue cannot answer, since "no live jobs" would then delete the world.
+# holds it and nothing has touched it for the submitter's clone_ttl_days.
+# Skipped entirely if squeue cannot answer, since "no live jobs" would then
+# delete the world.
 reap_clones() {
-    local ttl=${ROACH_CLONE_TTL_DAYS:-7} dir marker id
+    local ttl=@CLONE_TTL_DAYS@ dir marker id
     if ! squeue -h -u "$USER" -o %i >/dev/null 2>&1; then
         echo "reap: squeue unavailable, skipping"
         return 0
@@ -140,9 +141,12 @@ trap '' TERM USR1
 # sets SLURM_EXPORT_ENV=NONE) and they find neither pixi nor the tokens, caches
 # and node-local HOME that env.sh set up.
 #
-# --frozen: the clone is shared, so a rank that decided to re-solve would
-# rewrite pixi.lock underneath every other job at this commit. The lock is the
-# one prepare_repo wrote; use it.
+# --frozen --no-install: the clone is shared, so a rank that re-solved would
+# rewrite pixi.lock, and one that reinstalled would rebuild the project's
+# editable install -- concurrently, into the one environment every other job at
+# this commit is running out of. (That race fails exactly as you would guess: a
+# rank compiling against another rank's already-deleted build env.) prepare_repo
+# built it once under the lock; run it, do not touch it.
 srun --export=ALL --label --kill-on-bad-exit=1 \
-    pixi run --frozen python -m roach.slurm.run "@TARGET@" "@ARGS@" &
+    pixi run --frozen --no-install python -m roach.slurm.run "@TARGET@" "@ARGS@" &
 wait $!

@@ -13,12 +13,18 @@ submit(
     name="lr-1e-3",
     setup=("pixi run build-sampler",),   # built inside the clone, if you need it
     repo_root=..., log_root=..., clone_root=..., secrets_dir=...,
+    clone_ttl_days=7, omp_num_threads=8,
 )
 ```
 
 A sweep is a python loop around that call. There is no config format, no CLI and
 no DSL: the arguments are a dict, and the loop that builds them is the record of
 the experiment.
+
+Nor is anything read from the environment. Every knob the job uses is an
+argument to `submit()`, so the same call is the same job on any node, and a
+value nobody passed is an error at submit time rather than whatever the node
+happened to export.
 
 ## What a job actually does
 
@@ -78,8 +84,8 @@ you. What changes:
   shared clone, a rank that re-solved would rewrite the lock underneath every
   other job at that commit.
 * **Nothing is deleted when a job ends.** A clone is retired once no live job
-  holds it and nothing has touched it for `ROACH_CLONE_TTL_DAYS` (default 7),
-  swept by whichever job publishes the next clone.
+  holds it and nothing has touched it for `clone_ttl_days`, swept by
+  whichever job publishes the next clone.
 
 Put `clone_root` on the node's own big disk, on the same filesystem as the
 package caches — pixi hardlinks the environment from them when it can, and

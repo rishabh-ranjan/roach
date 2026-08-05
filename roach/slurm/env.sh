@@ -68,7 +68,7 @@ HF_TOKEN=$(_read_secret huggingface); export HF_TOKEN
 export HUGGING_FACE_HUB_TOKEN=$HF_TOKEN
 GITHUB_TOKEN=$(_read_secret github); export GITHUB_TOKEN GH_TOKEN=$GITHUB_TOKEN
 
-export OMP_NUM_THREADS=${OMP_NUM_THREADS:-8}
+export OMP_NUM_THREADS=@OMP_NUM_THREADS@
 export TOKENIZERS_PARALLELISM=false
 ulimit -l unlimited || die "cannot raise RLIMIT_MEMLOCK (need --propagate=MEMLOCK)"
 

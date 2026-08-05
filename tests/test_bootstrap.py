@@ -83,7 +83,12 @@ def rig(tmp_path: Path):
         )
         return commit()
 
-    def job(run_id: str, sha: str, setup: str = "echo built > built.txt") -> Path:
+    def job(
+        run_id: str,
+        sha: str,
+        setup: str = "echo built > built.txt",
+        ttl: int = 99,
+    ) -> Path:
         filled = script
         for key, value in {
             "@REPO@": str(origin),
@@ -91,6 +96,7 @@ def rig(tmp_path: Path):
             "@COMMIT@": sha,
             "@ROACH_COMMIT@": sha,
             "@CLONE_ROOT@": str(tmp_path / "clones"),
+            "@CLONE_TTL_DAYS@": str(ttl),
             "@LOG_ROOT@": str(tmp_path / "logs"),
             "@SECRETS_DIR@": str(tmp_path / "secrets"),
             "@RUN_ID@": run_id,
@@ -105,19 +111,18 @@ def rig(tmp_path: Path):
         path.write_text(filled)
         return path
 
-    def env(job_id: int, ttl: int = 99) -> dict[str, str]:
+    def env(job_id: int) -> dict[str, str]:
         return {
             **os.environ,
             "SLURM_JOB_ID": str(job_id),
-            "ROACH_CLONE_TTL_DAYS": str(ttl),
             "LIVE_JOBS_FILE": str(live),
         }
 
-    def run(path: Path, job_id: int, ttl: int = 99, **kw):
+    def run(path: Path, job_id: int, **kw):
         live.write_text(live.read_text() + f"{job_id}\n")
         out = subprocess.run(
             ["bash", str(path)],
-            env=env(job_id, ttl),
+            env=env(job_id),
             capture_output=True,
             text=True,
             **kw,
@@ -211,10 +216,10 @@ def test_the_reaper_keeps_a_clone_a_live_job_still_holds(rig):
     (clone / ".roach-inuse" / "1300").touch()  # a job that is still running
     rig.live.write_text("1300\n")
 
-    rig.run(rig.job("new", rig.churn()), 1002, ttl=0)
+    rig.run(rig.job("new", rig.churn(), ttl=0), 1002)
     assert clone.is_dir(), "reaped a clone a live job was using"
 
     # and once that job is gone, the next sweep retires it
     rig.live.write_text("")
-    rig.run(rig.job("newer", rig.churn()), 1003, ttl=0)
+    rig.run(rig.job("newer", rig.churn(), ttl=0), 1003)
     assert not clone.exists()
