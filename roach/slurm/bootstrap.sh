@@ -22,8 +22,11 @@ cd "$WORK_DIR/repo"
 git checkout --quiet "@COMMIT@"
 echo "clone: $PWD @ $(git rev-parse --short HEAD)"
 
-# Node-local home, caches and tokens; sets the node up if it has never been used.
-source roach/slurm/env.sh
+# Node-local home, caches and tokens; sets the node up if it has never been
+# used. Spliced in rather than sourced from a path: this runs before the
+# environment exists, so roach is not importable yet, and inlining also pins the
+# node setup to the submission instead of to whatever is installed later.
+@ENV@
 
 # pixi.lock is gitignored, so a fresh clone has none and the first job of a run
 # solves the environment itself. Keep that solve with the run and reuse it on

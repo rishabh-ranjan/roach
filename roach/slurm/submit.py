@@ -143,6 +143,7 @@ def submit(
     args_path.write_text(json.dumps(args, indent=1, sort_keys=True) + "\n")
 
     script = files("roach.slurm").joinpath("bootstrap.sh").read_text()
+    env_sh = files("roach.slurm").joinpath("env.sh").read_text()
     for key, value in {
         "@REPO@": repo,
         "@COMMIT@": commit,
@@ -154,6 +155,7 @@ def submit(
         "@CLONE_ROOT@": str(clone_root),
         "@SECRETS_DIR@": str(secrets_dir),
         "@SETUP@": "\n".join(setup),
+        "@ENV@": env_sh,
     }.items():
         script = script.replace(key, value)
 
