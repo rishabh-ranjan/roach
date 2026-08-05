@@ -23,8 +23,10 @@ class Resources:
     time: str
     """Wall clock as slurm spells it, e.g. "7-00:00:00"."""
     gpus: str
-    """`<type>:<count>`, e.g. "a100:8". The count is also the number of ranks:
-    one task per GPU, which is what makes DDP work (see roach.slurm.run)."""
+    """`<type>:<count>`, e.g. "a100:8", or a bare `<count>` for any type the
+    eligible nodes offer -- which is what lets one job shape be scheduled across
+    nodes that carry different cards. The count is also the number of ranks: one
+    task per GPU, which is what makes DDP work (see roach.slurm.run)."""
     cpus_per_task: int
     """Per rank, not per node -- srun starts one task per GPU."""
     exclusive: bool
@@ -35,9 +37,11 @@ class Resources:
     nodelist: str | None
 
     def __post_init__(self) -> None:
-        kind, _, count = self.gpus.partition(":")
-        if not kind or not count.isdigit() or int(count) < 1:
-            raise ValueError(f"gpus must be '<type>:<count>', got {self.gpus!r}")
+        kind, sep, count = self.gpus.rpartition(":")
+        if (sep and not kind) or not count.isdigit() or int(count) < 1:
+            raise ValueError(
+                f"gpus must be '<count>' or '<type>:<count>', got {self.gpus!r}"
+            )
         if self.cpus_per_task < 1:
             raise ValueError(f"cpus_per_task must be >= 1, got {self.cpus_per_task}")
 

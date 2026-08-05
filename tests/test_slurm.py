@@ -67,6 +67,18 @@ def ampere(**over) -> Resources:
     return Resources(**{**kwargs, **over})
 
 
+def test_gpus_may_name_a_type_or_just_a_count():
+    """A bare count is how one job shape reaches nodes carrying different cards:
+    naming a type pins the job to the nodes that have it, which for a sweep that
+    should land anywhere free is an artificial constraint."""
+    assert "--gres=gpu:2" in ampere(gpus="2").sbatch_flags()
+    assert ampere(gpus="2").ntasks == 2
+    assert "--gres=gpu:a100:8" in ampere().sbatch_flags()
+    for bad in ("", ":4", "a100:", "a100", "a100:0"):
+        with pytest.raises(ValueError, match="gpus must be"):
+            ampere(gpus=bad)
+
+
 def test_one_task_per_gpu():
     assert ampere().ntasks == 8
     assert ampere(gpus="b200:4").ntasks == 4
