@@ -142,7 +142,6 @@ def submit(
     secrets_dir: Path | str,
     setup: tuple[str, ...] = (),
     run_id: str | None = None,
-    dry_run: bool = False,
 ) -> Job:
     """Run ``target(**args)`` on ``resources``, one rank per GPU.
 
@@ -207,10 +206,6 @@ def submit(
         f"--output={log}",
         f"--error={log}",
     ]
-    if dry_run:
-        print("DRY RUN: sbatch", " ".join(flags))
-        return Job(id="dry-run", run_id=run_id, log=Path(str(log)), target=target)
-
     # Slurm env vars outrank command-line flags when submitting from inside an
     # allocation, which would silently impose that job's shape on this one.
     env = {
