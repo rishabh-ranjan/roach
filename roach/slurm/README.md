@@ -27,9 +27,10 @@ the experiment.
    beartype). A typo fails in a second instead of forty minutes into a job.
 3. Writes `args` as JSON next to the run's logs, mints a `run_id`, and hands
    slurm a generated script -- on stdin, so nothing needs shared storage.
-4. In the job: clones **that commit** into node-local scratch, brings the node
-   up (`env.sh`: node-local `HOME`, caches, tokens, first-login setup), reuses
-   the run's pinned `pixi.lock`, runs your `setup` commands.
+4. In the job: brings the node up (`env.sh`: node-local `HOME`, caches, tokens,
+   first-login setup), then takes the node's clone of **that commit** —
+   building it, `pixi install` and your `setup` commands and all, if it is the
+   first job at that commit on that node.
 5. `srun` starts **one rank per GPU**; `roach.slurm.run` maps
    `SLURM_PROCID`/`LOCALID`/`NTASKS` to `RANK`/`LOCAL_RANK`/`WORLD_SIZE`, so
    `torch.distributed` comes up with no launcher.
@@ -48,6 +49,41 @@ directly. The contract is:
 
 Pass `run_id=` to relaunch an existing run by hand -- same wandb run, same
 output directory, same checkpoint.
+
+## Clones
+
+`clone_root` holds **one clone per commit per node**, shared by every job at
+that commit. It used to be one per job, thrown away at exit, and that cost far
+more than the disk: pixi keys an environment on the project path (a detached
+environment is literally `NAME-HASH_OF_PATH`), uv keys built wheels on the mtime
+of `pyproject.toml`, and cargo's artifacts live under the manifest. A clone at a
+fresh `mktemp` path therefore missed every one of those caches by construction,
+so each job re-solved the environment and recompiled the extensions — minutes of
+a full allocation, per job, to reproduce what the last job had already built.
+
+Reproducibility is unchanged: a clone is still exactly the submitted commit, and
+a different commit is a different directory, so a queued job cannot change under
+you. What changes:
+
+* **The first job at a commit builds it; the rest take a lock.** The builder
+  works in `<dir>.partial` and publishes with a rename, so the clone is either
+  absent or complete. A builder that is preempted drops the lock and leaves only
+  the `.partial`, which the next job wipes.
+* **The clone is read-only once it is ready.** Jobs at one commit share it, so an
+  experiment that writes into its own checkout now has its jobs stepping on each
+  other. Write to `log_root`, or to a path of your own.
+* **`pixi.lock` is solved once per commit** and lives in the clone (it is
+  gitignored, so a fresh checkout has none). A copy lands next to the run's logs
+  as a record of what the run used. Ranks start under `pixi run --frozen`: in a
+  shared clone, a rank that re-solved would rewrite the lock underneath every
+  other job at that commit.
+* **Nothing is deleted when a job ends.** A clone is retired once no live job
+  holds it and nothing has touched it for `ROACH_CLONE_TTL_DAYS` (default 7),
+  swept by whichever job publishes the next clone.
+
+Put `clone_root` on the node's own big disk, on the same filesystem as the
+package caches — pixi hardlinks the environment from them when it can, and
+copies ~8 GiB when it cannot.
 
 ## Resources
 

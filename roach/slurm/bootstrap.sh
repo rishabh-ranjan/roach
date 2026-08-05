@@ -5,52 +5,129 @@
 set -euo pipefail
 
 echo "=== $(date -Is) job $SLURM_JOB_ID on $(hostname), restarts=${SLURM_RESTART_COUNT:-0} ==="
-echo "repo=@REPO@ commit=@COMMIT@ run_id=@RUN_ID@ target=@TARGET@"
+echo "name=@NAME@ repo=@REPO@ commit=@COMMIT@ run_id=@RUN_ID@ target=@TARGET@"
 
 export USER=${USER:-$(id -un)}
 export TMPDIR=/tmp/$USER
 mkdir -p "@CLONE_ROOT@"
 
-# The job runs the commit that was submitted, not whatever main has become. The
-# clone is the one step that cannot come from the package: the package is what
-# we are about to clone.
-WORK_DIR=$(mktemp -d "@CLONE_ROOT@/@NAME@-@RUN_ID@-job${SLURM_JOB_ID}.XXXX")
-trap 'rm -rf "$WORK_DIR"' EXIT   # the pixi env lives in the clone, so it goes too
-git -c url."https://x-access-token:$(tr -d '[:space:]' < "@SECRETS_DIR@/github")@github.com/".insteadOf="https://github.com/" \
-    clone --quiet "@REPO@" "$WORK_DIR/repo"
-cd "$WORK_DIR/repo"
-git checkout --quiet "@COMMIT@"
-echo "clone: $PWD @ $(git rev-parse --short HEAD)"
-
 # Node-local home, caches and tokens; sets the node up if it has never been
 # used. Spliced in rather than sourced from a path: this runs before the
 # environment exists, so roach is not importable yet, and inlining also pins the
-# node setup to the submission instead of to whatever is installed later.
+# node setup to the submission instead of to whatever is installed later. It
+# comes before the clones so they get the job's HOME, PATH, caches and token.
 @ENV@
 
-# pixi.lock is gitignored, so a fresh clone has none and the first job of a run
-# solves the environment itself. Keep that solve with the run and reuse it on
-# every requeue, so the environment cannot drift between attempts.
-RUN_LOCK=@LOG_ROOT@/@RUN_ID@.pixi.lock
-if [[ -f $RUN_LOCK ]]; then
-    echo "reusing pixi.lock from $RUN_LOCK"
-    cp "$RUN_LOCK" pixi.lock
-fi
-pixi install
-[[ -f $RUN_LOCK ]] || cp pixi.lock "$RUN_LOCK"
+# --------------------------------------------------------------------------- #
+# Clones are keyed by commit and shared by every job at that commit on the node.
+#
+# A per-job clone threw away everything it built. That cost more than the disk:
+# pixi keys its environments on the project path (a detached environment is
+# literally NAME-HASH_OF_PATH), uv keys built wheels on the mtime of
+# pyproject.toml, and cargo's artifacts live under the manifest. A clone at a
+# fresh mktemp path therefore missed every one of those caches by construction,
+# so each job re-solved the environment and recompiled the extensions -- minutes
+# of a full allocation, per job, for a result the previous job had already
+# produced byte for byte.
+#
+# Keyed by commit, the first job on a node pays that once and the rest pay a
+# lock acquisition. Reproducibility is unchanged: a clone is still exactly the
+# submitted commit, and a different commit is a different directory, so a queued
+# job still cannot change under you.
+# --------------------------------------------------------------------------- #
+REPO_DIR=@CLONE_ROOT@/repo-@COMMIT@
+ROACH_DIR=@CLONE_ROOT@/roach-@ROACH_COMMIT@
 
-# Whatever this project needs built before its ranks start (@SETUP@ is the
-# submitter's `setup` argument; empty is fine).
-@SETUP@
+git_clone() {  # <url> <commit> <dir>
+    git -c url."https://x-access-token:$(tr -d '[:space:]' < "@SECRETS_DIR@/github")@github.com/".insteadOf="https://github.com/" \
+        clone --quiet "$1" "$3"
+    git -C "$3" checkout --quiet "$2"
+}
 
-# roach itself, at the commit that submitted this job -- not whatever the
-# project's manifest resolves to now. Nothing to install: the job side of
-# roach.slurm imports only the standard library.
-git -c url."https://x-access-token:$(tr -d '[:space:]' < "@SECRETS_DIR@/github")@github.com/".insteadOf="https://github.com/" \
-    clone --quiet "@ROACH_REPO@" "$WORK_DIR/roach"
-git -C "$WORK_DIR/roach" checkout --quiet "@ROACH_COMMIT@"
-export PYTHONPATH="$WORK_DIR/roach"
-echo "roach: $(git -C "$WORK_DIR/roach" rev-parse --short HEAD)"
+prepare_repo() {
+    # pixi.lock is gitignored, so the first job at this commit solves the
+    # environment and every later one inherits that solve from the clone.
+    pixi install
+    # Whatever this project needs built before its ranks start (@SETUP@ is the
+    # submitter's `setup` argument; empty is fine).
+    @SETUP@
+}
+
+# The job side of roach.slurm imports only the standard library, so its clone
+# needs nothing built.
+prepare_roach() { :; }
+
+# Whoever takes the lock builds in <dir>.partial and publishes it with a rename,
+# so <dir> is either absent or complete -- never half-built. A builder killed
+# mid-flight drops the lock (flock releases when the fd closes) and leaves only
+# the .partial, which the next holder wipes. Late arrivals block here for the
+# one build, then find the marker and fall straight through.
+clone_at_commit() {  # <dir> <url> <commit> <prepare-fn>
+    local dir=$1 url=$2 commit=$3 prepare=$4
+    exec 9>"$dir.lock"
+    flock 9
+    if [[ ! -f $dir/.roach-ready ]]; then
+        echo "preparing $dir"
+        rm -rf "$dir.partial"
+        git_clone "$url" "$commit" "$dir.partial"
+        ( cd "$dir.partial" && "$prepare" )
+        touch "$dir.partial/.roach-ready"
+        mv "$dir.partial" "$dir"
+    fi
+    # Claim it before dropping the lock, so the reaper -- which takes the same
+    # lock -- cannot see an unused clone that a job is in the middle of adopting.
+    mkdir -p "$dir/.roach-inuse"
+    touch "$dir/.roach-inuse/$SLURM_JOB_ID" "$dir/.roach-used"
+    exec 9>&-
+    echo "clone: $dir @ $(git -C "$dir" rev-parse --short HEAD)"
+}
+
+# Nothing deletes a clone when a job ends any more -- it is shared, and the next
+# job at that commit wants it. Sweep instead: a clone goes once no live job
+# holds it and nothing has touched it for ROACH_CLONE_TTL_DAYS. Skipped entirely
+# if squeue cannot answer, since "no live jobs" would then delete the world.
+reap_clones() {
+    local ttl=${ROACH_CLONE_TTL_DAYS:-7} dir marker id
+    if ! squeue -h -u "$USER" -o %i >/dev/null 2>&1; then
+        echo "reap: squeue unavailable, skipping"
+        return 0
+    fi
+    for dir in "@CLONE_ROOT@"/*/; do
+        dir=${dir%/}
+        if [[ $dir == "$REPO_DIR" || $dir == "$ROACH_DIR" ]]; then continue; fi
+        if [[ ! -f $dir/.roach-ready ]]; then continue; fi
+        # A job holding the lock is preparing or adopting this clone.
+        exec 8>"$dir.lock"
+        if ! flock -n 8; then exec 8>&-; continue; fi
+        for marker in "$dir"/.roach-inuse/*; do
+            if [[ ! -e $marker ]]; then continue; fi
+            id=$(basename "$marker")
+            if [[ -z $(squeue -h -j "$id" -o %i 2>/dev/null) ]]; then rm -f "$marker"; fi
+        done
+        if [[ -n $(ls -A "$dir/.roach-inuse" 2>/dev/null) ]]; then exec 8>&-; continue; fi
+        if [[ -z $(find "$dir/.roach-used" -mtime "+$ttl" 2>/dev/null) ]]; then
+            exec 8>&-; continue
+        fi
+        echo "reaping $dir (unused for >${ttl}d)"
+        rm -rf "$dir"
+        exec 8>&-
+        rm -f "$dir.lock"
+    done
+}
+
+clone_at_commit "$REPO_DIR" "@REPO@" "@COMMIT@" prepare_repo
+clone_at_commit "$ROACH_DIR" "@ROACH_REPO@" "@ROACH_COMMIT@" prepare_roach
+reap_clones
+
+# Release the claim when this job ends, so the reaper can retire the clone once
+# the last job at this commit is done with it.
+trap 'rm -f "$REPO_DIR/.roach-inuse/$SLURM_JOB_ID" "$ROACH_DIR/.roach-inuse/$SLURM_JOB_ID"' EXIT
+
+export PYTHONPATH="$ROACH_DIR"
+cd "$REPO_DIR"
+# What this run's environment actually was, next to its logs. A record, not a
+# cache: the clone holds the lock the jobs share.
+cp pixi.lock "@LOG_ROOT@/@RUN_ID@.pixi.lock"
 
 # One task per GPU: each rank is a slurm task, so slurm's preemption SIGTERM
 # reaches every rank directly. They save resume.pt at the next step boundary and
@@ -62,6 +139,10 @@ trap '' TERM USR1
 # script just built. Without it srun starts them nearly empty (--export=NONE
 # sets SLURM_EXPORT_ENV=NONE) and they find neither pixi nor the tokens, caches
 # and node-local HOME that env.sh set up.
+#
+# --frozen: the clone is shared, so a rank that decided to re-solve would
+# rewrite pixi.lock underneath every other job at this commit. The lock is the
+# one prepare_repo wrote; use it.
 srun --export=ALL --label --kill-on-bad-exit=1 \
-    pixi run python -m roach.slurm.run "@TARGET@" "@ARGS@" &
+    pixi run --frozen python -m roach.slurm.run "@TARGET@" "@ARGS@" &
 wait $!
