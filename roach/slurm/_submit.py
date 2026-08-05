@@ -150,7 +150,6 @@ def submit(
     clone_root: Path | str,
     secrets_dir: Path | str,
     clone_ttl_days: int,
-    omp_num_threads: int,
     setup: tuple[str, ...] = (),
     run_id: str | None = None,
 ) -> Job:
@@ -161,10 +160,9 @@ def submit(
     checkpoint it wrote earlier.
 
     ``clone_ttl_days`` is how long an unused clone survives in ``clone_root``
-    before a later job sweeps it; ``omp_num_threads`` is what the ranks get for
-    ``OMP_NUM_THREADS``. Both are required for the same reason ``Resources``
-    has no defaults: the job reads nothing from the environment, so a value
-    nobody passed would be roach choosing on the experiment's behalf.
+    before a later job sweeps it. It is required for the same reason
+    ``Resources`` has no defaults: the job reads nothing from the environment,
+    so a value nobody passed would be roach choosing on the experiment's behalf.
     """
     os.chdir(repo_root)
     # The job runs from the repo root, so targets are importable relative to it
@@ -188,14 +186,7 @@ def submit(
     args_path.write_text(json.dumps(args, indent=1, sort_keys=True) + "\n")
 
     script = files("roach.slurm").joinpath("bootstrap.sh").read_text()
-    # env.sh is filled before it is spliced in, so neither file's placeholders
-    # depend on the order the other's are substituted.
-    env_sh = (
-        files("roach.slurm")
-        .joinpath("env.sh")
-        .read_text()
-        .replace("@OMP_NUM_THREADS@", str(omp_num_threads))
-    )
+    env_sh = files("roach.slurm").joinpath("env.sh").read_text()
     for key, value in {
         "@REPO@": repo,
         "@COMMIT@": commit,

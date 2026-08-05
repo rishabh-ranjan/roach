@@ -13,7 +13,7 @@ submit(
     name="lr-1e-3",
     setup=("pixi run build-sampler",),   # built inside the clone, if you need it
     repo_root=..., log_root=..., clone_root=..., secrets_dir=...,
-    clone_ttl_days=7, omp_num_threads=8,
+    clone_ttl_days=7,
 )
 ```
 
@@ -71,13 +71,13 @@ Reproducibility is unchanged: a clone is still exactly the submitted commit, and
 a different commit is a different directory, so a queued job cannot change under
 you. What changes:
 
-* **The first job at a commit builds it; the rest take a lock.** The builder
-  works in `<dir>.partial` and publishes with a rename, so the clone is either
-  absent or complete. A builder that is preempted drops the lock and leaves only
-  the `.partial`, which the next job wipes.
-* **The clone is read-only once it is ready.** Jobs at one commit share it, so an
-  experiment that writes into its own checkout now has its jobs stepping on each
-  other. Write to `log_root`, or to a path of your own.
+* **The first job at a commit builds it; the rest take a lock.** `.roach-ready`,
+  written last, is what publishes the clone; a builder that is preempted drops
+  the lock and leaves an unmarked directory for the next job to wipe. The build
+  happens in place, never staged and renamed: an environment is keyed to the
+  path it was installed at, so moving the project afterwards makes pixi
+  reinstall the editable path dependency — for a maturin project, a full
+  recompile, run by every rank at once into the one shared environment.
 * **`pixi.lock` is solved once per commit** and lives in the clone (it is
   gitignored, so a fresh checkout has none). A copy lands next to the run's logs
   as a record of what the run used. Ranks start under `pixi run --frozen`: in a
@@ -90,6 +90,34 @@ you. What changes:
 Put `clone_root` on the node's own big disk, on the same filesystem as the
 package caches — pixi hardlinks the environment from them when it can, and
 copies ~8 GiB when it cannot.
+
+### The clone is read-only
+
+**Your job must not write inside its own checkout.** This is the one thing the
+shared clone asks of an experiment, and roach cannot enforce it — a job that
+breaks the rule fails as corrupted output or a race, not as an error.
+
+It used to be safe: each job had a private clone that was deleted at exit, so an
+experiment could scribble in its working directory and nobody noticed. Now every
+job at that commit on that node is in the same directory at the same time. Two
+runs writing `outputs/`, a checkpoint saved next to the code, a scratch file
+named after the dataset rather than the run — all of these are now two processes
+writing one path.
+
+The rule in practice:
+
+* **Write under `log_root`, or an output root you pass as an argument.** Both are
+  arguments to the target, so two runs get two paths by construction.
+* **Read anything in the checkout; treat it as `chmod -R a-w`.** Code, task
+  lists, config files committed to the repo: all fine to read.
+* **Do not `os.chdir` and use relative paths.** The job starts in the clone, so a
+  relative output path lands in it.
+* **`setup` is the exception**, and only the exception. It runs once, under the
+  lock, before the clone is published — building compiled extensions there is
+  exactly what it is for.
+
+If an experiment genuinely needs a writable copy of the tree, copy it to
+somewhere under `run_id` and work there.
 
 ## Resources
 

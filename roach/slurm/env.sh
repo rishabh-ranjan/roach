@@ -68,7 +68,11 @@ HF_TOKEN=$(_read_secret huggingface); export HF_TOKEN
 export HUGGING_FACE_HUB_TOKEN=$HF_TOKEN
 GITHUB_TOKEN=$(_read_secret github); export GITHUB_TOKEN GH_TOKEN=$GITHUB_TOKEN
 
-export OMP_NUM_THREADS=@OMP_NUM_THREADS@
+# No OMP_NUM_THREADS: TaskPlugin is task/cgroup,task/affinity, so slurm binds
+# each task to its own cpus_per_task and OpenMP already sizes its pool from that
+# mask (measured: nproc is 8 in a --cpus-per-task=8 task on an 80-cpu node). A
+# number here could only disagree with the allocation -- as the old default of 8
+# did, on every job that asked for more.
 export TOKENIZERS_PARALLELISM=false
 ulimit -l unlimited || die "cannot raise RLIMIT_MEMLOCK (need --propagate=MEMLOCK)"
 
