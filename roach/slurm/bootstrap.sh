@@ -40,8 +40,17 @@ pixi install
 [[ -f $RUN_LOCK ]] || cp pixi.lock "$RUN_LOCK"
 
 # Whatever this project needs built before its ranks start (@SETUP@ is the
-# submitter's  argument; empty is fine).
+# submitter's `setup` argument; empty is fine).
 @SETUP@
+
+# roach itself, at the commit that submitted this job -- not whatever the
+# project's manifest resolves to now. Nothing to install: the job side of
+# roach.slurm imports only the standard library.
+git -c url."https://x-access-token:$(tr -d '[:space:]' < "@SECRETS_DIR@/github")@github.com/".insteadOf="https://github.com/" \
+    clone --quiet "@ROACH_REPO@" "$WORK_DIR/roach"
+git -C "$WORK_DIR/roach" checkout --quiet "@ROACH_COMMIT@"
+export PYTHONPATH="$WORK_DIR/roach"
+echo "roach: $(git -C "$WORK_DIR/roach" rev-parse --short HEAD)"
 
 # One task per GPU: each rank is a slurm task, so slurm's preemption SIGTERM
 # reaches every rank directly. They save resume.pt at the next step boundary and
