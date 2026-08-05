@@ -146,12 +146,11 @@ trap '' TERM USR1
 # sets SLURM_EXPORT_ENV=NONE) and they find neither pixi nor the tokens, caches
 # and node-local HOME that env.sh set up.
 #
-# --frozen --no-install: the clone is shared, so a rank that re-solved would
-# rewrite pixi.lock, and one that reinstalled would rebuild the project's
-# editable install -- concurrently, into the one environment every other job at
-# this commit is running out of. (That race fails exactly as you would guess: a
-# rank compiling against another rank's already-deleted build env.) prepare_repo
-# built it once under the lock; run it, do not touch it.
+# --frozen: the clone is shared, so a rank that re-solved would rewrite
+# pixi.lock underneath every other job at this commit. The lock is the one
+# prepare_repo wrote; use it. Installing is deliberately still allowed -- a rank
+# that finds the environment wrong should say so, or fix it, rather than run on
+# in whatever state it was left in.
 srun --export=ALL --label --kill-on-bad-exit=1 \
-    pixi run --frozen --no-install python -m roach.slurm.run "@TARGET@" "@ARGS@" &
+    pixi run --frozen python -m roach.slurm.run "@TARGET@" "@ARGS@" &
 wait $!
