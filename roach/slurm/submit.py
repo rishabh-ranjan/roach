@@ -8,6 +8,7 @@ Nothing here is site-specific -- paths, account and QOS are arguments.
 
 from __future__ import annotations
 
+import importlib.metadata
 import inspect
 import json
 import os
@@ -83,8 +84,32 @@ def check_args(target: str, args: dict[str, Any]) -> None:
                 raise TypeError(f"{target}({name}=...): {e}") from None
 
 
-def preflight() -> tuple[str, str]:
+def roach_source() -> tuple[str, str]:
+    """(repo url, commit) of the roach doing the submitting.
+
+    The job clones exactly this, so the pin is a property of the submission
+    rather than of the project's manifest: whichever roach you submitted with is
+    the one that runs, and upgrading roach cannot change a job already queued.
+    """
+    root = Path(__file__).resolve().parents[2]
+    if (root / ".git").is_dir():
+        return preflight(root)  # a working checkout: same rules as the project
+    info = json.loads(
+        importlib.metadata.distribution("roach").read_text("direct_url.json") or "{}"
+    )
+    commit = info.get("vcs_info", {}).get("commit_id")
+    if not commit:
+        raise RuntimeError(
+            "cannot tell which roach commit is running: install it from git "
+            "(pip/pixi record the commit) or use a checkout"
+        )
+    return info["url"], commit
+
+
+def preflight(root: Path | str | None = None) -> tuple[str, str]:
     """(repo url, commit) of a clean, pushed tree -- the job clones that."""
+    if root is not None:
+        os.chdir(root)
     root = _git("rev-parse", "--show-toplevel")
     if _git("status", "--porcelain"):
         raise RuntimeError(f"{root}: working tree is dirty; commit or stash first")
@@ -132,6 +157,10 @@ def submit(
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
     repo, commit = preflight()
+    # The roach that submits is the roach that runs: resolved here, cloned by
+    # the job. roach_source() may chdir, so take the project's answer first.
+    roach_repo, roach_commit = roach_source()
+    os.chdir(repo_root)
     run_id = run_id or timestamp()
     if "run_id" in inspect.signature(resolve(target)).parameters:
         args = {**args, "run_id": run_id}
@@ -155,6 +184,8 @@ def submit(
         "@CLONE_ROOT@": str(clone_root),
         "@SECRETS_DIR@": str(secrets_dir),
         "@SETUP@": "\n".join(setup),
+        "@ROACH_REPO@": roach_repo,
+        "@ROACH_COMMIT@": roach_commit,
         "@ENV@": env_sh,
     }.items():
         script = script.replace(key, value)
