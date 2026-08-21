@@ -160,9 +160,9 @@ def submit(
 ) -> Job:
     """Run ``target(**args)`` on ``resources`` of ``cluster``, one rank per GPU.
 
-    ``job_env`` is a shell file of the project's own, sourced right after the
-    cluster's environment on every node the job holds and before the clone is
-    built: caches a build wants, limits a run wants, whatever is the project's
+    ``job_env`` is a shell file of the project's own (a path relative to
+    ``repo_root`` works), sourced right after the cluster's environment on
+    every node the job holds and before the clone is built: caches a build wants, limits a run wants, whatever is the project's
     business and not the cluster's. ``setup`` is different: it runs once per
     clone, after ``pixi install``, and is for building what the environment
     does not.

@@ -19,7 +19,7 @@ As a dependency, pinned to a tag:
 
 ```toml
 # pyproject.toml
-dependencies = ["roach @ git+https://github.com/rishabh-ranjan/roach@v0.1.0"]
+dependencies = ["roach @ git+https://github.com/rishabh-ranjan/roach@v0.1.1"]
 ```
 
 For development:
