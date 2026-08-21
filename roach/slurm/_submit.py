@@ -155,7 +155,6 @@ def submit(
     setup: tuple[str, ...] = (),
     run_id: str | None = None,
     after: str | None = None,
-    timeout_grace_secs: int | None = None,
     pixi_env: str = "default",
 ) -> Job:
     """Run ``target(**args)`` on ``resources`` of ``cluster``, one rank per GPU.
@@ -176,16 +175,10 @@ def submit(
     the first stage to finish. The wait is on success: if the dependency fails,
     slurm cancels this job rather than leaving it pending forever.
 
-    ``timeout_grace_secs`` is how long before the wall clock the ranks are told
-    to stop, so the job can checkpoint and requeue itself instead of ending as
-    TIMEOUT (see bootstrap.sh). None takes the cluster's preemption grace, so
-    the two endings give a run the same time to save; 0 disables it and a job
-    that hits its limit then simply stops. It is a request, not a guarantee --
-    slurm rounds it to the minute and delivers it around that point -- so leave
-    room over what a checkpoint actually costs.
+    ``cluster.grace_secs`` before the wall clock the ranks are told to stop, so
+    the job can checkpoint and requeue itself instead of ending as TIMEOUT (see
+    bootstrap.sh).
     """
-    if timeout_grace_secs is None:
-        timeout_grace_secs = cluster.grace_secs
     # Every path may start with ``~``; it is expanded here, once, so callers
     # pass the same string on every node.
     repo_root, log_root, clone_root, secrets_dir = (
@@ -225,7 +218,6 @@ def submit(
         "@ENV@": env_sh,
         "@JOB_ENV@": job_env_sh,
         "@LAUNCH@": launch(resources, target, str(args_path), pixi_env),
-        "@REQUEUE_ON_TIMEOUT@": "1" if timeout_grace_secs else "0",
     }.items():
         script = script.replace(key, value)
 
@@ -245,11 +237,10 @@ def submit(
         "--export=NONE",
         f"--output={log}",
         f"--error={log}",
-    ]
-    if timeout_grace_secs:
         # B: the batch script only. The ranks are signalled by it, not by slurm,
         # so preemption and the wall clock look the same to them.
-        flags.append(f"--signal=B:USR1@{timeout_grace_secs}")
+        f"--signal=B:USR1@{cluster.grace_secs}",
+    ]
     if after:
         # kill-on-invalid-dep, or a dependency that can never be satisfied
         # leaves this job pending until someone notices it by hand.

@@ -202,8 +202,7 @@ on_timeout() {
         scancel --signal=TERM --quiet "$SLURM_JOB_ID" || true
     fi
 }
-# 0 when submit() was told not to (timeout_grace_secs=0).
-if [[ @REQUEUE_ON_TIMEOUT@ == 1 ]]; then trap on_timeout USR1; else trap '' USR1; fi
+trap on_timeout USR1
 # srun refuses to start when SLURM_CPUS_PER_TASK disagrees with the allocation's
 # SLURM_TRES_PER_TASK ("cpus-per-task set by two different environment
 # variables"), and a stale value reaches a job easily enough -- a submitting

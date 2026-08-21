@@ -61,8 +61,8 @@ Both end the same way, and neither needs you. Because each rank is a slurm
 
 Slurm does that requeue for preemption and node failure only: **`TIMEOUT` is a
 normal ending and no setting makes it a requeue.** So the batch script asks for
-`--signal=B:USR1@<timeout_grace_secs>` (the cluster's preemption grace by
-default), and on that signal it
+`--signal=B:USR1@<cluster.grace_secs>` (the preemption grace), and on that
+signal it
 sends its own steps the same SIGTERM slurm would have, waits for them, and calls
 `scontrol requeue` itself. A run therefore survives its wall clock exactly as it
 survives preemption -- the ranks cannot tell the two apart -- and long runs stop
@@ -70,9 +70,8 @@ needing a person to notice and resubmit them.
 
 Requeued once, never twice: the signal is delivered once, it is acted on only
 while the ranks are still running, and preemption never reaches that code
-because it arrives as SIGTERM, which the batch script ignores. Set
-`timeout_grace_secs=0` to opt out; raise it if a checkpoint takes longer than
-the grace to write.
+because it arrives as SIGTERM, which the batch script ignores. Raise the
+cluster's `grace_secs` if a checkpoint takes longer than that to write.
 
 Pass `run_id=` to relaunch an existing run by hand -- same wandb run, same
 output directory, same checkpoint.

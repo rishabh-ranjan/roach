@@ -21,6 +21,7 @@ class Cluster:
     not read configuration from the environment (see the tests) and must fail
     loudly on a node it cannot bring up."""
     grace_secs: int
-    """Seconds between preemption's SIGTERM and the kill; the default for
-    `submit(timeout_grace_secs=)` so the wall clock gives a run the same time
-    to checkpoint that preemption does."""
+    """Seconds between preemption's SIGTERM and the kill. The wall clock
+    signals the batch script this long before the limit (`--signal=B:USR1@`),
+    so both endings give a run the same time to checkpoint. Slurm rounds it to
+    the minute, so leave room over what a checkpoint actually costs."""
