@@ -3,12 +3,10 @@
 The submitting side owns everything that needs the repo: it refuses a dirty or
 unpushed tree, records the commit, checks the arguments against the target's
 signature, and hands slurm a script that reproduces the run from that commit.
-Nothing here is site-specific -- paths, account and QOS are arguments.
+Nothing here is site-specific: what is comes in as `cluster`, and paths,
+account and QOS are arguments.
 """
 
-from __future__ import annotations
-
-import importlib.metadata
 import inspect
 import json
 import os
@@ -23,6 +21,9 @@ from typing import Any, get_type_hints
 
 from beartype.door import die_if_unbearable
 
+import roach
+
+from roach.slurm.clusters import Cluster
 from roach.slurm.resources import Resources
 from roach.slurm.target import resolve
 
@@ -84,39 +85,8 @@ def check_args(target: str, args: dict[str, Any]) -> None:
                 raise TypeError(f"{target}({name}=...): {e}") from None
 
 
-def roach_source() -> tuple[str, str]:
-    """(repo url, commit) of the roach doing the submitting.
-
-    The job clones exactly this, so the pin is a property of the submission
-    rather than of the project's manifest: whichever roach you submitted with is
-    the one that runs, and upgrading roach cannot change a job already queued.
-    """
-    root = Path(__file__).resolve().parents[2]
-    if (root / ".git").is_dir():
-        return preflight(root)  # a working checkout: same rules as the project
-    return installed_source("roach")
-
-
-def installed_source(package: str) -> tuple[str, str]:
-    """(repo url, commit) of a package installed from git.
-
-    pip and pixi record it in PEP 610 direct_url.json, which is the only way to
-    know what an installed copy actually is.
-    """
-    info = json.loads(
-        importlib.metadata.distribution(package).read_text("direct_url.json") or "{}"
-    )
-    commit = info.get("vcs_info", {}).get("commit_id")
-    if not commit:
-        raise RuntimeError(
-            f"cannot tell which {package} commit is running: install it from git "
-            "(pip and pixi record the commit) or work from a checkout"
-        )
-    return info["url"], commit
-
-
-def preflight(root: Path | str | None = None) -> tuple[str, str]:
-    """(repo url, commit) of a clean, pushed tree -- the job clones that."""
+def preflight(root: Path | str | None = None) -> tuple[str, str, str]:
+    """(repo url, commit, branch) of a clean, pushed tree -- the job clones that."""
     if root is not None:
         os.chdir(root)
     root = _git("rev-parse", "--show-toplevel")
@@ -130,7 +100,7 @@ def preflight(root: Path | str | None = None) -> tuple[str, str]:
         ["git", "merge-base", "--is-ancestor", commit, f"origin/{branch}"]
     ).returncode:
         raise RuntimeError(f"{commit} is not on origin/{branch}; push first")
-    return repo, commit
+    return repo, commit, branch
 
 
 def _git(*args: str) -> str:
@@ -139,42 +109,90 @@ def _git(*args: str) -> str:
     ).stdout.strip()
 
 
+def launch(resources: Resources, target: str, args_path: str, pixi_env: str) -> str:
+    """The srun line that starts the ranks, spliced into the batch script.
+
+    `--export=ALL`. There is one rule, applied at two layers: **nothing from the
+    submitting shell, everything from the job's own environment.** This srun is
+    the second layer -- it runs *inside* the job, after env.sh has built the
+    node-local HOME, the caches, the PATH to pixi and the tokens, and without
+    ALL it would start the ranks nearly empty and find none of it. The
+    `sbatch --export=NONE` that crosses from the submitting shell is the first
+    layer, and says the opposite for the same reason: that shell's HOME does not
+    exist on the node and its environment holds API tokens slurm would record.
+
+    `--frozen`: the clone is shared, so a rank that re-solved would rewrite
+    pixi.lock underneath every other job at this commit.
+
+    `--chdir`: srun otherwise hands the tasks this shell's *resolved* cwd, and
+    the clone root may be a per-node symlink into a host-specific path, so on
+    a multi-node job every rank would be sent to the batch node's path -- which
+    does not exist on any other node. `$REPO_DIR` is the unresolved one, and
+    each node resolves it to its own disk.
+    """
+    run = (
+        f"pixi run --frozen -e {pixi_env} python -m roach.slurm.run "
+        f'"{target}" "{args_path}"'
+    )
+    return (
+        "srun --export=ALL --chdir=$REPO_DIR --label --kill-on-bad-exit=1 \\\n"
+        f"    {run}"
+    )
+
+
 def submit(
     target: str,
     args: dict[str, Any],
     resources: Resources,
     *,
+    cluster: Cluster,
     name: str,
     repo_root: Path | str,
     log_root: Path | str,
     clone_root: Path | str,
     secrets_dir: Path | str,
-    clone_ttl_days: int,
+    job_env: Path | str | None = None,
     setup: tuple[str, ...] = (),
     run_id: str | None = None,
+    after: str | None = None,
+    timeout_grace_secs: int | None = None,
+    pixi_env: str = "default",
 ) -> Job:
-    """Run ``target(**args)`` on ``resources``, one rank per GPU.
+    """Run ``target(**args)`` on ``resources`` of ``cluster``, one rank per GPU.
+
+    ``job_env`` is a shell file of the project's own, sourced right after the
+    cluster's environment on every node the job holds and before the clone is
+    built: caches a build wants, limits a run wants, whatever is the project's
+    business and not the cluster's. ``setup`` is different: it runs once per
+    clone, after ``pixi install``, and is for building what the environment
+    does not.
 
     ``run_id`` is minted here and injected into ``args`` if the target declares
     it; pass one to relaunch an existing run, which is how a run resumes from a
     checkpoint it wrote earlier.
 
-    ``clone_ttl_days`` is how long an unused clone survives in ``clone_root``
-    before a later job sweeps it. It is required for the same reason
-    ``Resources`` has no defaults: the job reads nothing from the environment,
-    so a value nobody passed would be roach choosing on the experiment's behalf.
+    ``after`` is the id of a job this one waits for, so a pipeline whose stages
+    want different hardware can be submitted in one pass instead of polling for
+    the first stage to finish. The wait is on success: if the dependency fails,
+    slurm cancels this job rather than leaving it pending forever.
+
+    ``timeout_grace_secs`` is how long before the wall clock the ranks are told
+    to stop, so the job can checkpoint and requeue itself instead of ending as
+    TIMEOUT (see bootstrap.sh). None takes the cluster's preemption grace, so
+    the two endings give a run the same time to save; 0 disables it and a job
+    that hits its limit then simply stops. It is a request, not a guarantee --
+    slurm rounds it to the minute and delivers it around that point -- so leave
+    room over what a checkpoint actually costs.
     """
+    if timeout_grace_secs is None:
+        timeout_grace_secs = cluster.grace_secs
     os.chdir(repo_root)
     # The job runs from the repo root, so targets are importable relative to it
     # (examples.foo:main). Match that here, or the submit-time check would fail
     # on targets the job can import perfectly well.
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
-    repo, commit = preflight()
-    # The roach that submits is the roach that runs: resolved here, cloned by
-    # the job. roach_source() may chdir, so take the project's answer first.
-    roach_repo, roach_commit = roach_source()
-    os.chdir(repo_root)
+    repo, commit, _branch = preflight()
     run_id = run_id or timestamp()
     if "run_id" in inspect.signature(resolve(target)).parameters:
         args = {**args, "run_id": run_id}
@@ -186,22 +204,24 @@ def submit(
     args_path.write_text(json.dumps(args, indent=1, sort_keys=True) + "\n")
 
     script = files("roach.slurm").joinpath("bootstrap.sh").read_text()
-    env_sh = files("roach.slurm").joinpath("env.sh").read_text()
+    env_sh = cluster.env.read_text()
+    job_env_sh = Path(job_env).read_text() if job_env else ""
     for key, value in {
         "@REPO@": repo,
         "@COMMIT@": commit,
         "@RUN_ID@": run_id,
         "@NAME@": name,
         "@TARGET@": target,
+        "@ROACH@": roach.__version__,
         "@ARGS@": str(args_path),
         "@LOG_ROOT@": str(log_root),
         "@CLONE_ROOT@": str(clone_root),
-        "@CLONE_TTL_DAYS@": str(clone_ttl_days),
         "@SECRETS_DIR@": str(secrets_dir),
         "@SETUP@": "\n".join(setup),
-        "@ROACH_REPO@": roach_repo,
-        "@ROACH_COMMIT@": roach_commit,
         "@ENV@": env_sh,
+        "@JOB_ENV@": job_env_sh,
+        "@LAUNCH@": launch(resources, target, str(args_path), pixi_env),
+        "@REQUEUE_ON_TIMEOUT@": "1" if timeout_grace_secs else "0",
     }.items():
         script = script.replace(key, value)
 
@@ -222,6 +242,14 @@ def submit(
         f"--output={log}",
         f"--error={log}",
     ]
+    if timeout_grace_secs:
+        # B: the batch script only. The ranks are signalled by it, not by slurm,
+        # so preemption and the wall clock look the same to them.
+        flags.append(f"--signal=B:USR1@{timeout_grace_secs}")
+    if after:
+        # kill-on-invalid-dep, or a dependency that can never be satisfied
+        # leaves this job pending until someone notices it by hand.
+        flags += [f"--dependency=afterok:{after}", "--kill-on-invalid-dep=yes"]
     # Slurm env vars outrank command-line flags when submitting from inside an
     # allocation, which would silently impose that job's shape on this one.
     env = {

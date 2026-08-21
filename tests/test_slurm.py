@@ -1,21 +1,19 @@
-"""roach.slurm: the parts that are pure functions, and so are the parts that bit us.
+"""roach.slurm: the parts that are pure functions.
 
-Every check here corresponds to a failure that cost real time on the cluster:
-arguments that do not match the target, a resource shape that slurm rejects, and
-a batch script that has lost a placeholder.
+What is checked: arguments that do not match the target, a resource shape slurm
+rejects, and a batch script that has lost a placeholder.
 """
 
-from __future__ import annotations
-
-import importlib.metadata
 import inspect
-import json
 
 import pytest
 
 from roach.slurm import Resources, check_args, resolve, timestamp
-from roach.slurm._submit import installed_source
+from roach.slurm._submit import launch
 from roach.slurm._submit import submit as submit_fn
+import re
+from importlib.resources import files
+from roach.slurm.clusters.ilc import AMPERE, AMPERE_LO, BLACKWELL, ILC
 
 
 def sample(a: int, b: str, c: list[int], run_id: str) -> None:  # noqa: ARG001
@@ -59,12 +57,24 @@ def ampere(**over) -> Resources:
         time="7-00:00:00",
         gpus="a100:8",
         cpus_per_task=16,
+        ntasks=None,
         exclusive=True,
         mem=None,
+        mem_per_gpu=None,
         constraint="ampere",
         nodelist=None,
+        reservation=None,
+        dependency=None,
     )
     return Resources(**{**kwargs, **over})
+
+
+def scripts() -> dict[str, str]:
+    """Every shell file that reaches a compute node, by name."""
+    return {
+        "bootstrap.sh": files("roach.slurm").joinpath("bootstrap.sh").read_text(),
+        "ilc.env.sh": ILC.env.read_text(),
+    }
 
 
 def test_gpus_may_name_a_type_or_just_a_count():
@@ -72,16 +82,41 @@ def test_gpus_may_name_a_type_or_just_a_count():
     naming a type pins the job to the nodes that have it, which for a sweep that
     should land anywhere free is an artificial constraint."""
     assert "--gres=gpu:2" in ampere(gpus="2").sbatch_flags()
-    assert ampere(gpus="2").ntasks == 2
+    assert ampere(gpus="2").ranks == 2
     assert "--gres=gpu:a100:8" in ampere().sbatch_flags()
-    for bad in ("", ":4", "a100:", "a100", "a100:0"):
+    for bad in ("", ":4", "a100:", "a100"):
         with pytest.raises(ValueError, match="gpus must be"):
             ampere(gpus=bad)
 
 
+def test_a_cpu_only_stage_asks_for_no_gpu():
+    """A pipeline stage that does not use an accelerator must not hold one. GPUs
+    are the scarcest thing on these nodes, so a cpu-only job that keeps one idle
+    caps how many of its siblings can run -- which is a throughput bug that
+    looks like a scheduling one."""
+    flags = ampere(gpus="0").sbatch_flags()
+    assert not [f for f in flags if f.startswith("--gres")]
+    assert "--ntasks-per-node=1" in flags
+    assert ampere(gpus="0").ranks == 1
+    with pytest.raises(ValueError, match="no GPUs is"):
+        ampere(gpus="a100:0")
+
+
 def test_one_task_per_gpu():
-    assert ampere().ntasks == 8
-    assert ampere(gpus="b200:4").ntasks == 4
+    assert ampere().ranks == 8
+    assert ampere(gpus="b200:4").ranks == 4
+
+
+def test_ntasks_overrides_one_rank_per_gpu():
+    """One rank per GPU is what DDP wants, not a law. A stage that parallelises
+    inside one process -- sentence-transformers spawning a worker per device --
+    needs every GPU visible to a single rank, and got one GPU each instead."""
+    r = ampere(gpus="10", ntasks=1)
+    assert r.ranks == 1
+    assert "--ntasks-per-node=1" in r.sbatch_flags()
+    assert "--gres=gpu:10" in r.sbatch_flags()
+    with pytest.raises(ValueError, match="ntasks must be"):
+        ampere(ntasks=0)
 
 
 def test_sbatch_flags():
@@ -102,53 +137,17 @@ def test_resources_rejects_nonsense(bad):
         ampere(**bad)
 
 
-def test_a_git_install_reports_the_commit_it_was_built_from(monkeypatch):
-    """The job clones the roach that submitted it, so a queued run cannot change
-    because roach moved; that pin comes from PEP 610 metadata."""
-
-    class Dist:
-        @staticmethod
-        def read_text(_name):
-            return json.dumps(
-                {
-                    "url": "https://github.com/rishabh-ranjan/roach",
-                    "vcs_info": {"vcs": "git", "commit_id": "a" * 40},
-                }
-            )
-
-    # patched on the stdlib module: submit.py resolves it at call time, and
-    # `roach.slurm._submit` is the *function* (the package re-exports it), so
-    # there is no module attribute to patch instead.
-    monkeypatch.setattr(importlib.metadata, "distribution", lambda _: Dist)
-    assert installed_source("roach") == (
-        "https://github.com/rishabh-ranjan/roach",
-        "a" * 40,
-    )
-
-
-def test_an_install_with_no_git_provenance_is_an_error(monkeypatch):
-    class Dist:
-        @staticmethod
-        def read_text(_name):
-            return None  # a plain wheel: nothing says where it came from
-
-    monkeypatch.setattr(importlib.metadata, "distribution", lambda _: Dist)
-    with pytest.raises(RuntimeError, match="which roach commit"):
-        installed_source("roach")
-
-
 def test_every_placeholder_in_the_scripts_is_one_submit_fills():
     """A placeholder nobody fills reaches the compute node as a literal @NAME@,
     and fails there rather than here."""
-    import re
-    from importlib.resources import files
 
     used = set()
-    for name in ("bootstrap.sh", "env.sh"):
-        text = files("roach.slurm").joinpath(name).read_text()
+    for text in scripts().values():
         used |= set(re.findall(r"@[A-Z_]+@", text))
     filled = set(re.findall(r'"(@[A-Z_]+@)"', inspect.getsource(submit_fn)))
-    assert used == filled
+    # Subset, not equality: submit() also fills placeholders that only reach the
+    # script through another one (@TARGET@ and @ARGS@ ride inside @LAUNCH@).
+    assert used <= filled
 
 
 def test_no_placeholder_sits_inside_a_comment():
@@ -156,11 +155,8 @@ def test_no_placeholder_sits_inside_a_comment():
     in a comment gets the same treatment: the first line stays commented out and
     every line after it breaks out and runs as garbage -- which is a two-command
     setup silently corrupted, and a single-command one working fine."""
-    import re
-    from importlib.resources import files
 
-    for name in ("bootstrap.sh", "env.sh"):
-        text = files("roach.slurm").joinpath(name).read_text()
+    for name, text in scripts().items():
         bad = [
             line
             for line in text.splitlines()
@@ -173,13 +169,10 @@ def test_the_job_scripts_take_no_configuration_from_the_environment():
     """A job's environment is what submit() put there. A ``${VAR:-default}`` is
     a knob nobody passed, silently answered by whatever the node exported --
     which is how the same submission produces two different runs."""
-    import re
-    from importlib.resources import files
 
     # who we are, and what slurm tells the job about itself: not configuration
-    runtime = {"USER", "SLURM_RESTART_COUNT"}
-    for name in ("bootstrap.sh", "env.sh"):
-        text = files("roach.slurm").joinpath(name).read_text()
+    runtime = {"USER", "SLURM_RESTART_COUNT", "SLURM_NNODES"}
+    for name, text in scripts().items():
         read = set(re.findall(r"\$\{([A-Z_]+):-", text))
         assert read <= runtime, f"{name} reads {sorted(read - runtime)} from the env"
 
@@ -191,21 +184,55 @@ def test_job_env_is_not_inherited():
     assert '"--export=NONE"' in inspect.getsource(submit_fn)
 
 
-def test_bootstrap_lets_srun_inherit_the_job_environment():
+def test_the_launcher_lets_srun_inherit_the_job_environment():
     """--export=NONE (which keeps the submit shell out of the job) also stops
     srun from passing the job's own environment to its tasks, so `pixi` is not
     on their PATH; SLURM_EXPORT_ENV=ALL puts it back."""
-    from importlib.resources import files
-
-    script = files("roach.slurm").joinpath("bootstrap.sh").read_text()
-    assert "srun --export=ALL" in script
+    assert "--export=ALL" in launch(ampere(), "pkg:main", "/args.json", "default")
 
 
-def test_presets_are_one_rank_per_gpu():
+def test_ilc_presets_are_one_rank_per_gpu():
     """The preset's cpus_per_task is per rank, so a preset that quietly asked
     for a node's worth of cores per rank would be rejected at submit."""
-    from roach.slurm import AMPERE, AMPERE_LO, BLACKWELL
 
     for preset in (AMPERE, AMPERE_LO, BLACKWELL):
-        assert preset.ntasks == int(preset.gpus.rpartition(":")[2])
-        assert preset.ntasks * preset.cpus_per_task <= 288  # the widest node here
+        assert preset.ranks == int(preset.gpus.rpartition(":")[2])
+        assert preset.ranks * preset.cpus_per_task <= 288  # the widest node there
+
+
+def test_the_core_knows_no_cluster_and_no_project():
+    """Everything cluster-specific lives under `clusters/`, and nothing
+    project-specific lives anywhere: a node name, a qos, a build cache or a
+    framework's scratch file in the core is a job on some other cluster or
+    project silently inheriting it."""
+    core = [
+        p
+        for p in files("roach.slurm").iterdir()
+        if p.name.endswith((".py", ".sh")) and p.name != "__init__.py"  # the usage example
+    ]
+    words = ("blackwell", "ampere", "infolab", "il-lo", "/lfs/", "/dfs/", "cargo_target", "/dev/shm")
+    for p in core:
+        text = p.read_text().lower()
+        hit = [w for w in words if w in text]
+        assert not hit, f"{p.name} mentions {hit}"
+
+
+def test_a_dependent_job_is_cancelled_when_its_dependency_fails():
+    """`after` chains a pipeline's stages in one submission pass. Without
+    --kill-on-invalid-dep the second stage of a failed first stage sits PENDING
+    forever, which looks like a slow queue rather than a failure."""
+    src = inspect.getsource(submit_fn)
+    assert '"--dependency=afterok:{after}"' in src or "--dependency=afterok:" in src
+    assert "--kill-on-invalid-dep=yes" in src
+
+
+def test_mem_per_gpu_is_how_a_job_gets_a_whole_node_of_gpus():
+    """A partition with DefMemPerGPU applies it when deciding whether a job
+    fits, and --mem does not displace it: the most GPUs a job can hold becomes
+    RealMemory / DefMemPerGPU however little memory it wants. Here that is 3
+    GPUs on a 770G node. --mem-per-gpu replaces the default and lifts it."""
+    flags = ampere(gpus="8", mem=None, mem_per_gpu="20G").sbatch_flags()
+    assert "--mem-per-gpu=20G" in flags
+    assert not [f for f in flags if f.startswith("--mem=")]
+    with pytest.raises(ValueError, match="not both"):
+        ampere(mem="10G", mem_per_gpu="10G")

@@ -1,12 +1,10 @@
 """The batch script's clone protocol, exercised without slurm.
 
 The clone is shared by every job at a commit, which is only safe because of a
-lock, a marker and a rename. Each test here is one of the ways that goes wrong:
-two jobs building at once, a builder preempted mid-build, a finished job
-deleting a clone others are still using, and a reaper deleting a live one.
+lock and a marker. Each test here is one of the ways that goes wrong: two jobs
+building at once, a builder preempted mid-build, and a finished job deleting a
+clone others are still using.
 """
-
-from __future__ import annotations
 
 import os
 import signal
@@ -19,10 +17,11 @@ from pathlib import Path
 import pytest
 
 TOOLS = {
-    # `pixi install` is the slow step a second job must not repeat.
+    # `install` is the slow step a second job must not repeat, and it keeps a
+    # lock it already has -- which is what makes the seeded lock observable.
     "pixi": """#!/bin/bash
 case "$1" in
-  install) sleep 1; echo "lock-$(date +%s%N)" > pixi.lock ;;
+  install) sleep 1; [[ -f pixi.lock ]] || echo "lock-$(date +%s%N)" > pixi.lock ;;
   run) shift; while [[ $1 == --* ]]; do shift; done; exec "$@" ;;
 esac
 """,
@@ -38,7 +37,7 @@ done
 [[ -f $LIVE_JOBS_FILE ]] && cat "$LIVE_JOBS_FILE"
 exit 0
 """,
-    "python": '#!/bin/bash\necho "ran: python $*"\n',
+    "python": '#!/bin/bash\necho "ran: python $* job_env=${JOB_ENV_SEEN:-0}"\n',
 }
 
 
@@ -87,16 +86,12 @@ def rig(tmp_path: Path):
         run_id: str,
         sha: str,
         setup: str = "echo built > built.txt",
-        ttl: int = 99,
     ) -> Path:
         filled = script
-        for key, value in {
+        for placeholder, value in {
             "@REPO@": str(origin),
-            "@ROACH_REPO@": str(origin),
             "@COMMIT@": sha,
-            "@ROACH_COMMIT@": sha,
             "@CLONE_ROOT@": str(tmp_path / "clones"),
-            "@CLONE_TTL_DAYS@": str(ttl),
             "@LOG_ROOT@": str(tmp_path / "logs"),
             "@SECRETS_DIR@": str(tmp_path / "secrets"),
             "@RUN_ID@": run_id,
@@ -104,9 +99,15 @@ def rig(tmp_path: Path):
             "@TARGET@": "pkg:main",
             "@ARGS@": str(tmp_path / "logs" / "args.json"),
             "@ENV@": f"export PATH={tmp_path / 'bin'}:/usr/bin:/bin",
+            "@JOB_ENV@": "export JOB_ENV_SEEN=1",
+            "@ROACH@": "test",
             "@SETUP@": setup,
+            "@LAUNCH@": (
+                "srun --export=ALL pixi run --frozen python"
+                " -m roach.slurm.run pkg:main args.json"
+            ),
         }.items():
-            filled = filled.replace(key, value)
+            filled = filled.replace(placeholder, value)
         path = tmp_path / "work" / f"{run_id}.sh"
         path.write_text(filled)
         return path
@@ -143,35 +144,48 @@ def rig(tmp_path: Path):
 
 
 def test_concurrent_jobs_at_one_commit_build_the_clone_once(rig):
-    """Twelve jobs landing together used to be twelve clones, twelve solves and
-    twelve builds of the same commit."""
+    """Twelve jobs landing together share one clone, one solve and one build."""
     sha = rig.commit()
     scripts = [(rig.job(f"r{i}", sha), 1000 + i) for i in range(12)]
     with ThreadPoolExecutor(max_workers=12) as pool:
         outs = list(pool.map(lambda a: rig.run(*a), scripts))
 
     assert all(o.returncode == 0 for o in outs), outs[0].stderr
-    # the project clone and roach's are separate dirs; each is built once
     prepared = [
         line for o in outs for line in o.stdout.splitlines() if "preparing" in line
     ]
     assert sum(f"repo-{sha}" in line for line in prepared) == 1, prepared
-    assert sum(f"roach-{sha}" in line for line in prepared) == 1, prepared
     assert all("ran: python" in o.stdout for o in outs)
+    # the project's job_env reaches the ranks, not just the batch shell
+    assert all("job_env=1" in o.stdout for o in outs)
     # one solve, shared: every run recorded the same lock
     locks = {p.read_text() for p in (rig.root / "logs").glob("*.pixi.lock")}
     assert len(locks) == 1
 
 
+def test_a_new_commit_inherits_the_previous_solve(rig):
+    """Iterating is a commit per attempt, and a clone is per commit, so a solve
+    per commit would be a solve per attempt -- minutes each, for commits that
+    never touched a dependency. The lock is gitignored, so a new clone seeds it
+    from a ready clone with a byte-identical manifest and pixi finds nothing to
+    solve."""
+    first = rig.commit()
+    rig.run(rig.job("first", first), 1001)
+    lock = (rig.clones / f"repo-{first}" / "pixi.lock").read_text()
+
+    out = rig.run(rig.job("second", rig.churn()), 1002)  # new commit, same deps
+    assert "seeded pixi.lock" in out.stdout, out.stdout
+    assert (rig.clones / f"repo-{rig.commit()}" / "pixi.lock").read_text() == lock
+
+
 def test_a_finished_job_leaves_the_clone_for_the_next_one(rig):
-    """The old script deleted its clone on exit, which is what made every job
-    pay for the environment again -- and would now delete it under a job that is
-    still running."""
+    """A job must not delete its clone on exit: the next job would pay for the
+    environment again, and a job still running out of that clone would lose its
+    code underneath it."""
     sha = rig.commit()
     rig.run(rig.job("first", sha), 1001)
     clone = rig.clones / f"repo-{sha}"
     assert (clone / ".roach-ready").is_file()
-    assert not list((clone / ".roach-inuse").iterdir())  # claim released
 
     out = rig.run(rig.job("second", sha), 1002)
     assert "preparing" not in out.stdout
@@ -203,23 +217,3 @@ def test_a_killed_builder_leaves_a_recoverable_clone(rig):
     assert out.returncode == 0, out.stderr
     assert (clone / ".roach-ready").is_file()
     assert (clone / "built.txt").is_file()
-
-
-def test_the_reaper_keeps_a_clone_a_live_job_still_holds(rig):
-    """Sweeping by age alone would delete the clone out from under a long job
-    that has held it since before the cutoff."""
-    old = rig.commit()
-    rig.run(rig.job("old", old), 1001)
-    clone = rig.clones / f"repo-{old}"
-    (clone / ".roach-used").touch()
-    os.utime(clone / ".roach-used", (0, 0))  # ancient
-    (clone / ".roach-inuse" / "1300").touch()  # a job that is still running
-    rig.live.write_text("1300\n")
-
-    rig.run(rig.job("new", rig.churn(), ttl=0), 1002)
-    assert clone.is_dir(), "reaped a clone a live job was using"
-
-    # and once that job is gone, the next sweep retires it
-    rig.live.write_text("")
-    rig.run(rig.job("newer", rig.churn(), ttl=0), 1003)
-    assert not clone.exists()

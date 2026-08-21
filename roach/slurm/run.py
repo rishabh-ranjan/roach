@@ -6,8 +6,6 @@ arguments the submitter passed, in every rank, and picks up the distributed
 environment through the usual torch env vars.
 """
 
-from __future__ import annotations
-
 import json
 import os
 import socket

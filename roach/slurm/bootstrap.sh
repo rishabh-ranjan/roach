@@ -5,18 +5,26 @@
 set -euo pipefail
 
 echo "=== $(date -Is) job $SLURM_JOB_ID on $(hostname), restarts=${SLURM_RESTART_COUNT:-0} ==="
-echo "name=@NAME@ repo=@REPO@ commit=@COMMIT@ run_id=@RUN_ID@ target=@TARGET@"
+echo "name=@NAME@ repo=@REPO@ commit=@COMMIT@ run_id=@RUN_ID@ target=@TARGET@ roach=@ROACH@"
 
 export USER=${USER:-$(id -un)}
-export TMPDIR=/tmp/$USER
 mkdir -p "@CLONE_ROOT@"
 
-# Node-local home, caches and tokens; sets the node up if it has never been
-# used. Spliced in rather than sourced from a path: this runs before the
-# environment exists, so roach is not importable yet, and inlining also pins the
-# node setup to the submission instead of to whatever is installed later. It
-# comes before the clones so they get the job's HOME, PATH, caches and token.
+# The cluster's environment (node-local home, caches, tokens; sets the node up
+# if it has never been used), then the project's own job environment. Spliced
+# in rather than sourced from a path: this runs before the environment exists,
+# so roach is not importable yet, and inlining also pins both to the submission
+# instead of to whatever is installed later. It comes before the clones so they
+# get the job's HOME, PATH, caches and token.
+#
+# A function because a multi-node job has to run it on every node it holds, not
+# just the one the batch step landed on: HOME, pixi and the caches are per-node
+# things that no amount of environment forwarding can create remotely.
+roach_node_env() {
 @ENV@
+@JOB_ENV@
+}
+roach_node_env
 
 # --------------------------------------------------------------------------- #
 # Clones are keyed by commit and shared by every job at that commit on the node.
@@ -36,34 +44,72 @@ mkdir -p "@CLONE_ROOT@"
 # job still cannot change under you.
 # --------------------------------------------------------------------------- #
 REPO_DIR=@CLONE_ROOT@/repo-@COMMIT@
-ROACH_DIR=@CLONE_ROOT@/roach-@ROACH_COMMIT@
+
+# One place that knows how to reach a private repo, used to clone and to fetch.
+git_auth() {  # <git args...>
+    git -c url."https://x-access-token:$(tr -d '[:space:]' < "@SECRETS_DIR@/github")@github.com/".insteadOf="https://github.com/" \
+        "$@"
+}
 
 git_clone() {  # <url> <commit> <dir>
-    git -c url."https://x-access-token:$(tr -d '[:space:]' < "@SECRETS_DIR@/github")@github.com/".insteadOf="https://github.com/" \
-        clone --quiet "$1" "$3"
+    git_auth clone --quiet "$1" "$3"
     git -C "$3" checkout --quiet "$2"
 }
 
+# A clone is per commit, so iterating -- which is a commit per attempt -- pays
+# for a new one every time. Nothing about that is wrong; what was wrong is
+# re-solving the environment for a commit that did not touch a dependency, which
+# was minutes. The steps below print what they cost, because a regression here
+# is invisible otherwise. Measured on this project, per new commit: git clone
+# ~3s, pixi install ~50s, build ~7s -- against ~9 minutes before the lock was
+# seeded. The install is what remains, and it is pixi materializing an 8.5 GiB
+# environment because the environment is keyed on the clone's path.
+seed_lock() {  # in the new clone, before pixi install
+    # pixi.lock is gitignored, so a fresh clone has none and pixi solves from
+    # scratch -- the same solve, per commit, for a commit that did not touch a
+    # dependency. Copy the newest lock from a ready clone whose manifest is
+    # byte-identical; pixi validates it against the manifest anyway and re-solves
+    # if it disagrees, so a stale lock costs nothing and a matching one skips
+    # the solve entirely.
+    # Never seed over a lock we already have.
+    if [[ -f pixi.lock ]]; then return 0; fi
+    local newest= d
+    for d in "@CLONE_ROOT@"/*/; do
+        [[ -f $d/.roach-ready && -f $d/pixi.lock ]] || continue
+        cmp -s pyproject.toml "$d/pyproject.toml" || continue
+        if [[ -z $newest || $d/pixi.lock -nt $newest ]]; then newest=$d/pixi.lock; fi
+    done
+    if [[ -n $newest ]]; then
+        cp "$newest" pixi.lock
+        echo "prepare: seeded pixi.lock from $newest"
+    fi
+}
+
 prepare_repo() {
-    # pixi.lock is gitignored, so the first job at this commit solves the
-    # environment and every later one inherits that solve from the clone.
-    pixi install
+    local t
+    t=$SECONDS; seed_lock; echo "prepare: seed_lock $((SECONDS - t))s"
+    # The lock (seeded or solved here) lives in the clone, so every later job at
+    # this commit inherits it.
+    t=$SECONDS; pixi install; echo "prepare: pixi install $((SECONDS - t))s"
+    t=$SECONDS
     # Whatever this project needs built before its ranks start: the submitter's
     # `setup` argument, one command per line, empty is fine. Naming the
     # placeholder in this comment would splice the commands into it, and every
     # line after the first would break out and run as garbage.
     @SETUP@
+    echo "prepare: setup $((SECONDS - t))s"
 }
-
-# The job side of roach.slurm imports only the standard library, so its clone
-# needs nothing built.
-prepare_roach() { :; }
 
 # Whoever takes the lock builds; .roach-ready, written last, is what publishes
 # the result. A builder killed mid-flight drops the lock (flock releases when
 # the fd closes) and leaves an unmarked directory, which the next holder wipes.
 # Late arrivals block here for the one build, then find the marker and fall
 # straight through.
+#
+# Nothing here ever deletes a clone. They are cheap (an environment is reflinked
+# from the package cache: ~230 MiB of its 8 GiB is its own) and deleting one is
+# `rm -rf` when a disk actually fills up -- which is a person's call, not a
+# rule a job should be enforcing at 3am against a directory somebody is using.
 #
 # Built in place, not staged and renamed: the environment is keyed to the path
 # it was installed at, so moving the project afterwards makes pixi reinstall the
@@ -77,61 +123,37 @@ clone_at_commit() {  # <dir> <url> <commit> <prepare-fn>
     if [[ ! -f $dir/.roach-ready ]]; then
         echo "preparing $dir"
         rm -rf "$dir"
+        local t=$SECONDS
         git_clone "$url" "$commit" "$dir"
+        echo "prepare: git clone $((SECONDS - t))s"
         ( cd "$dir" && "$prepare" )
         touch "$dir/.roach-ready"
     fi
-    # Claim it before dropping the lock, so the reaper -- which takes the same
-    # lock -- cannot see an unused clone that a job is in the middle of adopting.
-    mkdir -p "$dir/.roach-inuse"
-    touch "$dir/.roach-inuse/$SLURM_JOB_ID" "$dir/.roach-used"
     exec 9>&-
     echo "clone: $dir @ $(git -C "$dir" rev-parse --short HEAD)"
 }
 
-# Nothing deletes a clone when a job ends any more -- it is shared, and the next
-# job at that commit wants it. Sweep instead: a clone goes once no live job
-# holds it and nothing has touched it for the submitter's clone_ttl_days.
-# Skipped entirely if squeue cannot answer, since "no live jobs" would then
-# delete the world.
-reap_clones() {
-    local ttl=@CLONE_TTL_DAYS@ dir marker id
-    if ! squeue -h -u "$USER" -o %i >/dev/null 2>&1; then
-        echo "reap: squeue unavailable, skipping"
-        return 0
-    fi
-    for dir in "@CLONE_ROOT@"/*/; do
-        dir=${dir%/}
-        if [[ $dir == "$REPO_DIR" || $dir == "$ROACH_DIR" ]]; then continue; fi
-        if [[ ! -f $dir/.roach-ready ]]; then continue; fi
-        # A job holding the lock is preparing or adopting this clone.
-        exec 8>"$dir.lock"
-        if ! flock -n 8; then exec 8>&-; continue; fi
-        for marker in "$dir"/.roach-inuse/*; do
-            if [[ ! -e $marker ]]; then continue; fi
-            id=$(basename "$marker")
-            if [[ -z $(squeue -h -j "$id" -o %i 2>/dev/null) ]]; then rm -f "$marker"; fi
-        done
-        if [[ -n $(ls -A "$dir/.roach-inuse" 2>/dev/null) ]]; then exec 8>&-; continue; fi
-        if [[ -z $(find "$dir/.roach-used" -mtime "+$ttl" 2>/dev/null) ]]; then
-            exec 8>&-; continue
-        fi
-        echo "reaping $dir (unused for >${ttl}d)"
-        rm -rf "$dir"
-        exec 8>&-
-        rm -f "$dir.lock"
-    done
-}
+# Every node needs its own clone: the clone root is node-local storage, and
+# this script -- the batch step -- runs on the first node only. One srun task
+# per node does the same preparation everywhere, and they do not contend: each
+# node has its own disk, its own lock file and its own pixi cache. The
+# functions travel to those shells through the environment (`export -f`), and
+# --export=ALL carries the HOME, PATH, caches and tokens the node setup above
+# just established, so a node prepares under exactly the environment its ranks
+# will run in.
+export -f roach_node_env git_auth git_clone seed_lock prepare_repo clone_at_commit
+export REPO_DIR
+if (( ${SLURM_NNODES:-1} > 1 )); then
+    # Each node sets itself up and builds its own clone. They do not contend:
+    # every node has its own disk, lock file and pixi cache. The functions
+    # travel through the environment (`export -f`), and --export=ALL carries
+    # the tokens and cache paths this shell already holds.
+    srun --nodes="$SLURM_NNODES" --ntasks-per-node=1 --export=ALL \
+        bash -c 'roach_node_env; clone_at_commit "$REPO_DIR" "@REPO@" "@COMMIT@" prepare_repo'
+else
+    clone_at_commit "$REPO_DIR" "@REPO@" "@COMMIT@" prepare_repo
+fi
 
-clone_at_commit "$REPO_DIR" "@REPO@" "@COMMIT@" prepare_repo
-clone_at_commit "$ROACH_DIR" "@ROACH_REPO@" "@ROACH_COMMIT@" prepare_roach
-reap_clones
-
-# Release the claim when this job ends, so the reaper can retire the clone once
-# the last job at this commit is done with it.
-trap 'rm -f "$REPO_DIR/.roach-inuse/$SLURM_JOB_ID" "$ROACH_DIR/.roach-inuse/$SLURM_JOB_ID"' EXIT
-
-export PYTHONPATH="$ROACH_DIR"
 cd "$REPO_DIR"
 # What this run's environment actually was, next to its logs. A record, not a
 # cache: the clone holds the lock the jobs share.
@@ -141,7 +163,53 @@ cp pixi.lock "@LOG_ROOT@/@RUN_ID@.pixi.lock"
 # reaches every rank directly. They save resume.pt at the next step boundary and
 # exit; this script only has to outlive them, hence the ignored trap. Slurm
 # requeues the job itself, and the run id is fixed, so the next attempt resumes.
-trap '' TERM USR1
+trap '' TERM
+
+# --------------------------------------------------------------------------- #
+# The wall clock, made to look like a preemption.
+#
+# Slurm requeues on preemption and node failure and on nothing else: TIMEOUT is
+# a normal ending, and no configuration turns it into a requeue (RequeueExit
+# keys off the script's exit code, which a job killed at its limit never gets to
+# choose). So a run that would otherwise resume from its own checkpoint just
+# stops, and someone has to notice and resubmit it.
+#
+# submit() asks for `--signal=B:USR1@<grace>`, which reaches *this script* that
+# many seconds before the limit -- B: is what keeps it off the ranks, so they see
+# exactly one SIGTERM whichever way the job ends, sent from here instead of by
+# slurm. From the ranks' side the two paths are then identical: save at the next
+# step boundary and exit. What differs is who requeues, and here that is us.
+#
+# Requeued once, never twice. The signal fires once; `timed_out` is set only if
+# the ranks were still running when it arrived (a run that finished inside the
+# grace window is finished, not timed out); and preemption cannot reach this
+# code, because it sends SIGTERM, which is ignored above -- slurm requeues that
+# one itself. If both somehow happen, the `scontrol requeue` below is against a
+# job slurm has already requeued and fails, which is reported, not retried.
+# --------------------------------------------------------------------------- #
+timed_out=0
+on_timeout() {
+    if [[ -n ${srun_pid:-} ]] && kill -0 "$srun_pid" 2>/dev/null; then
+        timed_out=1
+        echo "=== $(date -Is) wall clock is near: stopping the ranks to requeue ==="
+        # Through slurm, and not `kill -TERM $srun_pid`, for two reasons. The
+        # tasks run under slurmstepd on their own nodes, so a local signal only
+        # reaches srun and relies on it to relay; and srun is a child of this
+        # script, which ignores SIGTERM above -- an ignored disposition is
+        # inherited, so that signal would be dropped before srun ever saw it.
+        # scancel delivers to the steps and, without --batch, not to this
+        # script, which is exactly what preemption does.
+        scancel --signal=TERM --quiet "$SLURM_JOB_ID" || true
+    fi
+}
+# 0 when submit() was told not to (timeout_grace_secs=0).
+if [[ @REQUEUE_ON_TIMEOUT@ == 1 ]]; then trap on_timeout USR1; else trap '' USR1; fi
+# srun refuses to start when SLURM_CPUS_PER_TASK disagrees with the allocation's
+# SLURM_TRES_PER_TASK ("cpus-per-task set by two different environment
+# variables"), and a stale value reaches a job easily enough -- a submitting
+# shell that is itself inside an allocation is one way. The allocation is the
+# authority, so drop the environment's opinion and let srun read it.
+unset SLURM_CPUS_PER_TASK
 # --export=ALL here is not the same as sbatch's: that one kept the *submit
 # shell* out of the job, this one lets the tasks inherit the environment this
 # script just built. Without it srun starts them nearly empty (--export=NONE
@@ -153,6 +221,31 @@ trap '' TERM USR1
 # prepare_repo wrote; use it. Installing is deliberately still allowed -- a rank
 # that finds the environment wrong should say so, or fix it, rather than run on
 # in whatever state it was left in.
-srun --export=ALL --label --kill-on-bad-exit=1 \
-    pixi run --frozen python -m roach.slurm.run "@TARGET@" "@ARGS@" &
-wait $!
+#
+# The srun line itself is filled in by submit().
+@LAUNCH@ &
+srun_pid=$!
+
+# A trapped signal interrupts `wait`, which then returns 128+signum with the
+# ranks still running -- so wait again rather than treating that as their exit.
+while :; do
+    status=0
+    # `|| status=$?` and not `while ! wait`: the latter reports the status of
+    # the negation, which is how the ranks' exit code turns into a silent 0.
+    wait "$srun_pid" || status=$?
+    if (( status > 128 )) && kill -0 "$srun_pid" 2>/dev/null; then continue; fi
+    break
+done
+
+if (( timed_out )); then
+    echo "=== $(date -Is) ranks exited $status; requeueing job $SLURM_JOB_ID ==="
+    if scontrol requeue "$SLURM_JOB_ID"; then
+        # The requeue kills this job. Outlive that so a fast exit here cannot
+        # race the controller into recording the job as COMPLETED instead.
+        sleep 300
+        echo "!!! still running 300s after requeue: it did not take"
+    else
+        echo "!!! requeue refused; resubmit by hand with the same run_id"
+    fi
+fi
+exit "$status"
