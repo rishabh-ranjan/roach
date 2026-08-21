@@ -186,6 +186,11 @@ def submit(
     """
     if timeout_grace_secs is None:
         timeout_grace_secs = cluster.grace_secs
+    # Every path may start with ``~``; it is expanded here, once, so callers
+    # pass the same string on every node.
+    repo_root, log_root, clone_root, secrets_dir = (
+        Path(p).expanduser() for p in (repo_root, log_root, clone_root, secrets_dir)
+    )
     os.chdir(repo_root)
     # The job runs from the repo root, so targets are importable relative to it
     # (examples.foo:main). Match that here, or the submit-time check would fail
@@ -198,14 +203,13 @@ def submit(
         args = {**args, "run_id": run_id}
     check_args(target, args)
 
-    log_root, clone_root = Path(log_root), Path(clone_root)
     log_root.mkdir(parents=True, exist_ok=True)
     args_path = log_root / f"{run_id}.args.json"
     args_path.write_text(json.dumps(args, indent=1, sort_keys=True) + "\n")
 
     script = files("roach.slurm").joinpath("bootstrap.sh").read_text()
     env_sh = cluster.env.read_text()
-    job_env_sh = Path(job_env).read_text() if job_env else ""
+    job_env_sh = Path(job_env).expanduser().read_text() if job_env else ""
     for key, value in {
         "@REPO@": repo,
         "@COMMIT@": commit,
