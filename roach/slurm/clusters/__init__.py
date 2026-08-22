@@ -32,8 +32,5 @@ class Cluster:
     `sacct` -- goes over `ssh -o BatchMode=yes`, so the session never has to
     be on that cluster; the repo, the preflight and the argument check stay
     local. The connection must already be passwordless (keys, or a live
-    ControlMaster for a Duo-gated host)."""
-    submit_shell: str
-    """Shell prefix run before every command on `submit_host`; what makes
-    slurm callable in a non-login ssh shell there (a PATH, a SLURM_CONF).
-    Empty when nothing is needed."""
+    ControlMaster for a Duo-gated host), and slurm must be on PATH in a
+    non-interactive shell there -- that is the host's dotfiles' business."""

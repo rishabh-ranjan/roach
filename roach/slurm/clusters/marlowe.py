@@ -16,11 +16,6 @@ MARLOWE = Cluster(
     env=Path(__file__).with_name("marlowe.env.sh"),
     grace_secs=900,  # GraceTime on the preempt partition
     submit_host="marlowe",  # ssh alias; Duo-gated, so a ControlMaster must be up
-    # A non-login ssh shell there has no slurm on PATH and no slurm.conf.
-    submit_shell=(
-        "export PATH=/cm/shared/apps/slurm/current/bin:$PATH "
-        "SLURM_CONF=/cm/shared/apps/slurm/var/etc/slurm/slurm.conf; "
-    ),
 )
 
 H100 = Resources(

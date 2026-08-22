@@ -14,7 +14,6 @@ ILC = Cluster(
     env=Path(__file__).with_name("ilc.env.sh"),
     grace_secs=300,  # the preemption GraceTime on every qos
     submit_host=None,  # sessions run on an ILC node; the login host has no ~/scratch
-    submit_shell="",
 )
 
 AMPERE = Resources(

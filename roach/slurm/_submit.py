@@ -77,7 +77,7 @@ def on_cluster(cluster: Cluster, script: str, stdin: str | None = None) -> str:
     if cluster.submit_host is None:
         cmd = ["bash", "-c", script]
     else:
-        cmd = ["ssh", "-o", "BatchMode=yes", cluster.submit_host, cluster.submit_shell + script]
+        cmd = ["ssh", "-o", "BatchMode=yes", cluster.submit_host, script]
     out = subprocess.run(cmd, input=stdin, capture_output=True, text=True, env=env)
     if out.returncode:
         where = cluster.submit_host or "here"

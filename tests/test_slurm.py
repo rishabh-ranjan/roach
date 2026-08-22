@@ -280,7 +280,7 @@ def test_a_remote_cluster_is_reached_over_ssh_in_batch_mode(monkeypatch):
     assert on_cluster(MARLOWE, "sbatch x") == "Submitted batch job 7\n"
     assert seen["cmd"][:3] == ["ssh", "-o", "BatchMode=yes"]
     assert seen["cmd"][3] == "marlowe"
-    assert seen["cmd"][4].endswith("sbatch x") and "SLURM_CONF=" in seen["cmd"][4]
+    assert seen["cmd"][4] == "sbatch x"
     assert "SLURM_JOB_ID" not in seen["env"]
     assert on_cluster(ILC, "true") == "Submitted batch job 7\n"
     assert seen["cmd"] == ["bash", "-c", "true"]
