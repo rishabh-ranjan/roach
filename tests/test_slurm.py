@@ -5,15 +5,17 @@ rejects, and a batch script that has lost a placeholder.
 """
 
 import inspect
+import re
+import subprocess
+from importlib.resources import files
 
 import pytest
 
 from roach.slurm import Resources, check_args, resolve, timestamp
-from roach.slurm._submit import launch
+from roach.slurm._submit import home, launch, on_cluster
 from roach.slurm._submit import submit as submit_fn
-import re
-from importlib.resources import files
 from roach.slurm.clusters.ilc import AMPERE, AMPERE_LO, BLACKWELL, ILC
+from roach.slurm.clusters.marlowe import H100, H100_PREEMPT, MARLOWE
 
 
 def sample(a: int, b: str, c: list[int], run_id: str) -> None:  # noqa: ARG001
@@ -74,6 +76,7 @@ def scripts() -> dict[str, str]:
     return {
         "bootstrap.sh": files("roach.slurm").joinpath("bootstrap.sh").read_text(),
         "ilc.env.sh": ILC.env.read_text(),
+        "marlowe.env.sh": MARLOWE.env.read_text(),
     }
 
 
@@ -171,7 +174,7 @@ def test_the_job_scripts_take_no_configuration_from_the_environment():
     which is how the same submission produces two different runs."""
 
     # who we are, and what slurm tells the job about itself: not configuration
-    runtime = {"USER", "SLURM_RESTART_COUNT", "SLURM_NNODES"}
+    runtime = {"USER", "SLURM_RESTART_COUNT", "SLURM_NNODES", "SLURM_JOB_ID"}
     for name, text in scripts().items():
         read = set(re.findall(r"\$\{([A-Z_]+):-", text))
         assert read <= runtime, f"{name} reads {sorted(read - runtime)} from the env"
@@ -210,7 +213,8 @@ def test_the_core_knows_no_cluster_and_no_project():
         for p in files("roach.slurm").iterdir()
         if p.name.endswith((".py", ".sh")) and p.name != "__init__.py"  # the usage example
     ]
-    words = ("blackwell", "ampere", "infolab", "il-lo", "/lfs/", "/dfs/", "cargo_target", "/dev/shm")
+    words = ("blackwell", "ampere", "infolab", "il-lo", "/lfs/", "/dfs/", "cargo_target", "/dev/shm",
+             "h100", "m000137", "/users/", "local_scratch", "/cm/shared")
     for p in core:
         text = p.read_text().lower()
         hit = [w for w in words if w in text]
@@ -236,3 +240,47 @@ def test_mem_per_gpu_is_how_a_job_gets_a_whole_node_of_gpus():
     assert not [f for f in flags if f.startswith("--mem=")]
     with pytest.raises(ValueError, match="not both"):
         ampere(mem="10G", mem_per_gpu="10G")
+
+
+def test_marlowe_presets_are_one_rank_per_gpu():
+    for preset in (H100, H100_PREEMPT):
+        assert preset.ranks == int(preset.gpus.rpartition(":")[2])
+        assert preset.ranks * preset.cpus_per_task <= 112
+
+
+def test_a_tilde_path_is_the_clusters_home_not_this_one():
+    """Paths are strings for the cluster; expanding ``~`` here would name
+    this machine's home on a cluster that has a different one."""
+    assert home("~/scratch/x") == "$HOME/scratch/x"
+    assert home("~") == "$HOME"
+    assert home("/abs/x") == "/abs/x"
+    assert home("x~/y") == "x~/y"
+    assert "expanduser" not in inspect.getsource(home)
+
+
+def test_the_clone_root_is_made_after_the_env_sets_home():
+    """`~/roach_clones` is `$HOME/roach_clones`, and HOME is wrong until the
+    cluster's env has set it."""
+    text = scripts()["bootstrap.sh"]
+    assert text.index("roach_node_env\n") < text.index('mkdir -p "@CLONE_ROOT@"')
+
+
+def test_a_remote_cluster_is_reached_over_ssh_in_batch_mode(monkeypatch):
+    """Nothing interactive: a host that wants a password or Duo fails at once
+    instead of hanging a submission."""
+    seen = {}
+
+    def fake_run(cmd, **kw):
+        seen["cmd"] = cmd
+        seen["env"] = kw["env"]
+        return subprocess.CompletedProcess(cmd, 0, stdout="Submitted batch job 7\n", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setenv("SLURM_JOB_ID", "1")
+    assert on_cluster(MARLOWE, "sbatch x") == "Submitted batch job 7\n"
+    assert seen["cmd"][:3] == ["ssh", "-o", "BatchMode=yes"]
+    assert seen["cmd"][3] == "marlowe"
+    assert seen["cmd"][4].endswith("sbatch x") and "SLURM_CONF=" in seen["cmd"][4]
+    assert "SLURM_JOB_ID" not in seen["env"]
+    assert on_cluster(ILC, "true") == "Submitted batch job 7\n"
+    assert seen["cmd"] == ["bash", "-c", "true"]

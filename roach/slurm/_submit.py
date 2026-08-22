@@ -43,17 +43,46 @@ def timestamp() -> str:
 class Job:
     id: str
     run_id: str
-    log: Path
+    log: str
+    """The log's path as the cluster sees it: ``~`` is left for the cluster's
+    home, which may not be this machine's."""
     target: str
+    cluster: Cluster
 
     @property
     def state(self) -> str:
-        out = subprocess.run(
-            ["sacct", "-j", self.id, "-n", "--format=State"],
-            capture_output=True,
-            text=True,
-        )
-        return out.stdout.split("\n")[0].strip() or "UNKNOWN"
+        out = on_cluster(self.cluster, f"sacct -j {self.id} -n --format=State")
+        return out.split("\n")[0].strip() or "UNKNOWN"
+
+
+def home(path: Path | str) -> str:
+    """A path for the cluster: a leading ``~`` becomes ``$HOME``, expanded by
+    the shell there -- on the submit host and, in the batch script, after the
+    cluster's env has set the job's HOME. Never expanded here: this machine's
+    home is not the cluster's."""
+    path = str(path)
+    if path == "~" or path.startswith("~/"):
+        return "$HOME" + path[1:]
+    return path
+
+
+def on_cluster(cluster: Cluster, script: str, stdin: str | None = None) -> str:
+    """Run a shell snippet where the cluster's slurm commands work and return
+    its stdout: here when the cluster has no `submit_host`, else over ssh.
+    Nothing from this process's SLURM_*/SBATCH_* reaches it: submitting from
+    inside an allocation would otherwise impose that job's shape."""
+    env = {
+        k: v for k, v in os.environ.items() if not k.startswith(("SLURM_", "SBATCH_"))
+    }
+    if cluster.submit_host is None:
+        cmd = ["bash", "-c", script]
+    else:
+        cmd = ["ssh", "-o", "BatchMode=yes", cluster.submit_host, cluster.submit_shell + script]
+    out = subprocess.run(cmd, input=stdin, capture_output=True, text=True, env=env)
+    if out.returncode:
+        where = cluster.submit_host or "here"
+        raise RuntimeError(f"{where}: `{script}` failed ({out.returncode}):\n{out.stderr}")
+    return out.stdout
 
 
 def check_args(target: str, args: dict[str, Any]) -> None:
@@ -179,11 +208,10 @@ def submit(
     the job can checkpoint and requeue itself instead of ending as TIMEOUT (see
     bootstrap.sh).
     """
-    # Every path may start with ``~``; it is expanded here, once, so callers
-    # pass the same string on every node.
-    repo_root, log_root, clone_root, secrets_dir = (
-        Path(p).expanduser() for p in (repo_root, log_root, clone_root, secrets_dir)
-    )
+    # The repo and job_env are read here; every other path is the cluster's,
+    # and a leading ``~`` in it means the cluster's home (see `home`).
+    repo_root = Path(repo_root).expanduser()
+    log_root, clone_root, secrets_dir = (home(p) for p in (log_root, clone_root, secrets_dir))
     os.chdir(repo_root)
     # The job runs from the repo root, so targets are importable relative to it
     # (examples.foo:main). Match that here, or the submit-time check would fail
@@ -196,9 +224,12 @@ def submit(
         args = {**args, "run_id": run_id}
     check_args(target, args)
 
-    log_root.mkdir(parents=True, exist_ok=True)
-    args_path = log_root / f"{run_id}.args.json"
-    args_path.write_text(json.dumps(args, indent=1, sort_keys=True) + "\n")
+    args_path = f"{log_root}/{run_id}.args.json"
+    on_cluster(
+        cluster,
+        f'mkdir -p "{log_root}" && cat > "{args_path}"',
+        stdin=json.dumps(args, indent=1, sort_keys=True) + "\n",
+    )
 
     script = files("roach.slurm").joinpath("bootstrap.sh").read_text()
     env_sh = cluster.env.read_text()
@@ -210,18 +241,18 @@ def submit(
         "@NAME@": name,
         "@TARGET@": target,
         "@ROACH@": roach.__version__,
-        "@ARGS@": str(args_path),
-        "@LOG_ROOT@": str(log_root),
-        "@CLONE_ROOT@": str(clone_root),
-        "@SECRETS_DIR@": str(secrets_dir),
+        "@ARGS@": args_path,
+        "@LOG_ROOT@": log_root,
+        "@CLONE_ROOT@": clone_root,
+        "@SECRETS_DIR@": secrets_dir,
         "@SETUP@": "\n".join(setup),
         "@ENV@": env_sh,
         "@JOB_ENV@": job_env_sh,
-        "@LAUNCH@": launch(resources, target, str(args_path), pixi_env),
+        "@LAUNCH@": launch(resources, target, args_path, pixi_env),
     }.items():
         script = script.replace(key, value)
 
-    log = log_root / f"{run_id}_%j.out"
+    log = f"{log_root}/{run_id}_%j.out"
     flags = [
         f"--job-name={name}",
         *resources.sbatch_flags(),
@@ -245,24 +276,15 @@ def submit(
         # kill-on-invalid-dep, or a dependency that can never be satisfied
         # leaves this job pending until someone notices it by hand.
         flags += [f"--dependency=afterok:{after}", "--kill-on-invalid-dep=yes"]
-    # Slurm env vars outrank command-line flags when submitting from inside an
-    # allocation, which would silently impose that job's shape on this one.
-    env = {
-        k: v for k, v in os.environ.items() if not k.startswith(("SLURM_", "SBATCH_"))
-    }
-    out = subprocess.run(
-        ["sbatch", *flags],
-        input=script,
-        capture_output=True,
-        text=True,
-        check=True,
-        env=env,
-    )
-    job_id = out.stdout.split()[-1]
+    # Flags are shell words: `$HOME` in a path expands on the submit host,
+    # where it is that cluster's home.
+    out = on_cluster(cluster, "sbatch " + " ".join(flags), stdin=script)
+    job_id = out.split()[-1]
     print(f"{name}: job {job_id}  run_id {run_id}")
     return Job(
         id=job_id,
         run_id=run_id,
-        log=Path(str(log).replace("%j", job_id)),
+        log=log.replace("%j", job_id),
         target=target,
+        cluster=cluster,
     )

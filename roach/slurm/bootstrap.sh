@@ -8,7 +8,6 @@ echo "=== $(date -Is) job $SLURM_JOB_ID on $(hostname), restarts=${SLURM_RESTART
 echo "name=@NAME@ repo=@REPO@ commit=@COMMIT@ run_id=@RUN_ID@ target=@TARGET@ roach=@ROACH@"
 
 export USER=${USER:-$(id -un)}
-mkdir -p "@CLONE_ROOT@"
 
 # The cluster's environment (node-local home, caches, tokens; sets the node up
 # if it has never been used), then the project's own job environment. Spliced
@@ -25,6 +24,8 @@ roach_node_env() {
 @JOB_ENV@
 }
 roach_node_env
+# After the env: a `~` path is `$HOME`, and HOME is the env's to set.
+mkdir -p "@CLONE_ROOT@"
 
 # --------------------------------------------------------------------------- #
 # Clones are keyed by commit and shared by every job at that commit on the node.
