@@ -281,8 +281,9 @@ def submit(
             "srun", f"--jobid={inside}", "--overlap",
             f"--nodes={resources.nodes}", "--ntasks=1", "--cpus-per-task=1",
             f"--job-name={name}", "--chdir=/tmp", "--propagate=MEMLOCK",
+            # --export=NONE leaves the task no PATH to find bash on.
             "--export=NONE", f"--output={log}", f"--error={log}",
-            "bash", script_path,
+            "/bin/bash", script_path,
         ])
         # Detached: srun would otherwise block until the step ends.
         on_cluster(cluster, f"nohup {step} >/dev/null 2>&1 </dev/null &")
