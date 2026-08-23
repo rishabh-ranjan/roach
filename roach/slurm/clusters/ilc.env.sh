@@ -52,6 +52,13 @@ export XDG_CACHE_HOME=$HOME/.cache
 # requeue.
 export TMPDIR=/lfs/local/0/$USER/tmp
 mkdir -p "$TMPDIR" "$XDG_CACHE_HOME"
+# ~/scratch is the shared filesystem at the same path on every node, so a job
+# submitted with ~/scratch paths reads and writes the same files wherever it
+# lands. A real directory there is a node that wrote to local disk by mistake.
+if [[ ! -L $HOME/scratch ]]; then
+    [[ -e $HOME/scratch ]] && die "$HOME/scratch is not a symlink on $(hostname -s)"
+    ln -s "/dfs/user/$USER" "$HOME/scratch"
+fi
 
 # Tokens come from the shared secrets dir rather than the job env, where slurm
 # would record them; they were checked for readability above.
