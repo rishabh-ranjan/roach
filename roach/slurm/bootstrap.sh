@@ -144,12 +144,15 @@ clone_at_commit() {  # <dir> <url> <commit> <prepare-fn>
 # will run in.
 export -f roach_node_env git_auth git_clone seed_lock prepare_repo clone_at_commit
 export REPO_DIR
-if (( ${SLURM_NNODES:-1} > 1 )); then
+# How many nodes the ranks span, from submit(): inside a held allocation this
+# script is a one-node step and its SLURM_NNODES says nothing about the run.
+NODES=@NODES@
+if (( NODES > 1 )); then
     # Each node sets itself up and builds its own clone. They do not contend:
     # every node has its own disk, lock file and pixi cache. The functions
     # travel through the environment (`export -f`), and --export=ALL carries
     # the tokens and cache paths this shell already holds.
-    srun --nodes="$SLURM_NNODES" --ntasks-per-node=1 --overlap --export=ALL \
+    srun --nodes="$NODES" --ntasks="$NODES" --ntasks-per-node=1 --overlap --export=ALL \
         bash -c 'roach_node_env; clone_at_commit "$REPO_DIR" "@REPO@" "@COMMIT@" prepare_repo'
 else
     clone_at_commit "$REPO_DIR" "@REPO@" "@COMMIT@" prepare_repo

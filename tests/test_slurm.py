@@ -174,7 +174,7 @@ def test_the_job_scripts_take_no_configuration_from_the_environment():
     which is how the same submission produces two different runs."""
 
     # who we are, and what slurm tells the job about itself: not configuration
-    runtime = {"USER", "SLURM_RESTART_COUNT", "SLURM_NNODES", "SLURM_JOB_ID"}
+    runtime = {"USER", "SLURM_RESTART_COUNT", "SLURM_JOB_ID"}
     for name, text in scripts().items():
         read = set(re.findall(r"\$\{([A-Z_]+):-", text))
         assert read <= runtime, f"{name} reads {sorted(read - runtime)} from the env"
@@ -292,5 +292,5 @@ def test_the_launcher_spells_out_the_shape_and_overlaps_only_inside_a_hold():
     plain = launch(ampere(), "pkg:main", "/a.json", "default", overlap=False)
     held = launch(ampere(), "pkg:main", "/a.json", "default", overlap=True)
     for line in (plain, held):
-        assert "--nodes=1 --ntasks-per-node=8 --cpus-per-task=16" in line
+        assert "--nodes=1 --ntasks=8 --ntasks-per-node=8 --cpus-per-task=16" in line
     assert "--overlap" not in plain and "--overlap" in held

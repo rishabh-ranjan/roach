@@ -36,7 +36,12 @@ def set_torch_dist_env() -> None:
 
 
 def _first_host() -> str:
-    nodelist = os.environ.get("SLURM_JOB_NODELIST", "")
+    """Rank 0's node: the first of the *step's* nodes. The job's nodelist is
+    wrong inside a held allocation, where the ranks' step may not include the
+    node the job started on."""
+    nodelist = os.environ.get("SLURM_STEP_NODELIST") or os.environ.get(
+        "SLURM_JOB_NODELIST", ""
+    )
     if not nodelist:
         return socket.gethostname()
     out = subprocess.run(

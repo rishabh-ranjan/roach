@@ -169,8 +169,11 @@ def launch(
     # a held allocation this srun runs from a one-task step whose SLURM_NTASKS
     # would otherwise size it, and --overlap lets it share the node with that
     # step.
+    # --ntasks as well as --nodes: from inside a one-node step, slurm clamps
+    # a --nodes=N request to that node unless the task count forces N.
     shape = (
-        f"--nodes={resources.nodes} --ntasks-per-node={resources.ranks_per_node} "
+        f"--nodes={resources.nodes} --ntasks={resources.ranks} "
+        f"--ntasks-per-node={resources.ranks_per_node} "
         f"--cpus-per-task={resources.cpus_per_task}"
     )
     if overlap:
@@ -266,6 +269,7 @@ def submit(
         "@CLONE_ROOT@": clone_root,
         "@SECRETS_DIR@": secrets_dir,
         "@SETUP@": "\n".join(setup),
+        "@NODES@": str(resources.nodes),
         "@ENV@": env_sh,
         "@JOB_ENV@": job_env_sh,
         "@LAUNCH@": launch(resources, target, args_path, pixi_env, overlap=inside is not None),
