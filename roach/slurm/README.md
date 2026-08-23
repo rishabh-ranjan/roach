@@ -76,6 +76,25 @@ cluster's `grace_secs` if a checkpoint takes longer than that to write.
 Pass `run_id=` to relaunch an existing run by hand -- same wandb run, same
 output directory, same checkpoint.
 
+## Holding an allocation while iterating
+
+A queue wait per attempt is the wrong shape for debugging a run. `hold()`
+queues a job that takes the resources and sleeps; once it runs, every
+`submit(..., inside=<its id>)` starts immediately as a step of it, with the
+same script sbatch would have run (written next to the logs, started by a
+detached one-task `srun --overlap`):
+
+```python
+from roach.slurm import hold, submit
+job = hold(H100, cluster=MARLOWE, name="pretrain", log_root="~/scratch/.../slurm-logs")
+submit(..., inside=job)          # once the hold is running; as often as needed
+```
+
+A step has no wall clock of its own and nothing requeues it: it lives and
+dies with the holder, whose limit is `resources.time`. The holder charges the
+allocation whether or not a step is running, so `scancel` it the moment the
+iteration is over and submit the real run as a job.
+
 ## Clones
 
 `clone_root` holds **one clone per commit per node**, shared by every job at
