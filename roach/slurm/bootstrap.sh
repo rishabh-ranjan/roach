@@ -149,7 +149,7 @@ if (( ${SLURM_NNODES:-1} > 1 )); then
     # every node has its own disk, lock file and pixi cache. The functions
     # travel through the environment (`export -f`), and --export=ALL carries
     # the tokens and cache paths this shell already holds.
-    srun --nodes="$SLURM_NNODES" --ntasks-per-node=1 --export=ALL \
+    srun --nodes="$SLURM_NNODES" --ntasks-per-node=1 --overlap --export=ALL \
         bash -c 'roach_node_env; clone_at_commit "$REPO_DIR" "@REPO@" "@COMMIT@" prepare_repo'
 else
     clone_at_commit "$REPO_DIR" "@REPO@" "@COMMIT@" prepare_repo

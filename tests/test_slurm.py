@@ -191,7 +191,7 @@ def test_the_launcher_lets_srun_inherit_the_job_environment():
     """--export=NONE (which keeps the submit shell out of the job) also stops
     srun from passing the job's own environment to its tasks, so `pixi` is not
     on their PATH; SLURM_EXPORT_ENV=ALL puts it back."""
-    assert "--export=ALL" in launch(ampere(), "pkg:main", "/args.json", "default")
+    assert "--export=ALL" in launch(ampere(), "pkg:main", "/args.json", "default", overlap=False)
 
 
 def test_ilc_presets_are_one_rank_per_gpu():
@@ -284,3 +284,13 @@ def test_a_remote_cluster_is_reached_over_ssh_in_batch_mode(monkeypatch):
     assert "SLURM_JOB_ID" not in seen["env"]
     assert on_cluster(ILC, "true") == "Submitted batch job 7\n"
     assert seen["cmd"] == ["bash", "-c", "true"]
+
+
+def test_the_launcher_spells_out_the_shape_and_overlaps_only_inside_a_hold():
+    """Inside a held allocation the ranks start from a one-task step, whose
+    SLURM_NTASKS would otherwise size them."""
+    plain = launch(ampere(), "pkg:main", "/a.json", "default", overlap=False)
+    held = launch(ampere(), "pkg:main", "/a.json", "default", overlap=True)
+    for line in (plain, held):
+        assert "--nodes=1 --ntasks-per-node=8 --cpus-per-task=16" in line
+    assert "--overlap" not in plain and "--overlap" in held

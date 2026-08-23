@@ -19,7 +19,7 @@ supported cluster.
 # _submit rather than submit: a module and the function it exports cannot share
 # a name, or the re-export below shadows the module and `import roach.slurm.submit`
 # quietly hands you the function instead.
-from roach.slurm._submit import Job, check_args, submit, timestamp
+from roach.slurm._submit import Job, check_args, hold, submit, timestamp
 from roach.slurm.clusters import Cluster
 from roach.slurm.resources import Resources
 from roach.slurm.target import resolve
@@ -29,6 +29,7 @@ __all__ = [
     "Job",
     "Resources",
     "check_args",
+    "hold",
     "resolve",
     "submit",
     "timestamp",

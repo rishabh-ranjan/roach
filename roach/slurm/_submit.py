@@ -138,7 +138,9 @@ def _git(*args: str) -> str:
     ).stdout.strip()
 
 
-def launch(resources: Resources, target: str, args_path: str, pixi_env: str) -> str:
+def launch(
+    resources: Resources, target: str, args_path: str, pixi_env: str, overlap: bool
+) -> str:
     """The srun line that starts the ranks, spliced into the batch script.
 
     `--export=ALL`. There is one rule, applied at two layers: **nothing from the
@@ -163,8 +165,18 @@ def launch(resources: Resources, target: str, args_path: str, pixi_env: str) -> 
         f"pixi run --frozen -e {pixi_env} python -m roach.slurm.run "
         f'"{target}" "{args_path}"'
     )
+    # The shape is spelled out rather than taken from the environment: inside
+    # a held allocation this srun runs from a one-task step whose SLURM_NTASKS
+    # would otherwise size it, and --overlap lets it share the node with that
+    # step.
+    shape = (
+        f"--nodes={resources.nodes} --ntasks-per-node={resources.ranks_per_node} "
+        f"--cpus-per-task={resources.cpus_per_task}"
+    )
+    if overlap:
+        shape += " --overlap"
     return (
-        "srun --export=ALL --chdir=$REPO_DIR --label --kill-on-bad-exit=1 \\\n"
+        f"srun --export=ALL --chdir=$REPO_DIR --label --kill-on-bad-exit=1 {shape} \\\n"
         f"    {run}"
     )
 
@@ -185,6 +197,7 @@ def submit(
     run_id: str | None = None,
     after: str | None = None,
     pixi_env: str = "default",
+    inside: str | None = None,
 ) -> Job:
     """Run ``target(**args)`` on ``resources`` of ``cluster``, one rank per GPU.
 
@@ -207,6 +220,13 @@ def submit(
     ``cluster.grace_secs`` before the wall clock the ranks are told to stop, so
     the job can checkpoint and requeue itself instead of ending as TIMEOUT (see
     bootstrap.sh).
+
+    ``inside`` is the id of an allocation held with `hold()`: the run starts
+    there now, as a step, instead of queueing as a job of its own. The script
+    is the same one sbatch would get; it is written next to the logs and run
+    by a detached one-task `srun --overlap`, and the ranks' srun overlaps it.
+    Nothing requeues a step -- the wall clock is the holder's -- so this is
+    for iterating, not for a run that must outlive the allocation.
     """
     # The repo and job_env are read here; every other path is the cluster's,
     # and a leading ``~`` in it means the cluster's home (see `home`).
@@ -248,9 +268,26 @@ def submit(
         "@SETUP@": "\n".join(setup),
         "@ENV@": env_sh,
         "@JOB_ENV@": job_env_sh,
-        "@LAUNCH@": launch(resources, target, args_path, pixi_env),
+        "@LAUNCH@": launch(resources, target, args_path, pixi_env, overlap=inside is not None),
     }.items():
         script = script.replace(key, value)
+
+    if inside is not None:
+        assert after is None, "a step inside a held allocation cannot wait on a job"
+        log = f"{log_root}/{run_id}_{inside}.out"
+        script_path = f"{log_root}/{run_id}.sh"
+        on_cluster(cluster, f'cat > "{script_path}"', stdin=script)
+        step = " ".join([
+            "srun", f"--jobid={inside}", "--overlap",
+            f"--nodes={resources.nodes}", "--ntasks=1", "--cpus-per-task=1",
+            f"--job-name={name}", "--chdir=/tmp", "--propagate=MEMLOCK",
+            "--export=NONE", f"--output={log}", f"--error={log}",
+            "bash", script_path,
+        ])
+        # Detached: srun would otherwise block until the step ends.
+        on_cluster(cluster, f"nohup {step} >/dev/null 2>&1 </dev/null &")
+        print(f"{name}: step in job {inside}  run_id {run_id}")
+        return Job(id=inside, run_id=run_id, log=log, target=target, cluster=cluster)
 
     log = f"{log_root}/{run_id}_%j.out"
     flags = [
@@ -288,3 +325,36 @@ def submit(
         target=target,
         cluster=cluster,
     )
+
+
+def hold(
+    resources: Resources,
+    *,
+    cluster: Cluster,
+    name: str,
+    log_root: Path | str,
+) -> str:
+    """Queue a job that holds ``resources`` and does nothing, and return its id.
+
+    For iterating: one queue wait, then every `submit(..., inside=<id>)` starts
+    at once as a step of this allocation instead of queueing behind the
+    cluster again. It holds the cards whether or not anything runs in it, so
+    cancel it the moment the iteration is over. Its wall clock is
+    ``resources.time``; steps die with it.
+    """
+    log_root = home(log_root)
+    log = f"{log_root}/hold_{name}_%j.out"
+    flags = [
+        f"--job-name=hold-{name}",
+        *resources.sbatch_flags(),
+        "--chdir=/tmp",
+        "--export=NONE",
+        f"--output={log}",
+        f"--error={log}",
+        "--wrap", "'sleep infinity'",
+    ]
+    on_cluster(cluster, f'mkdir -p "{log_root}"')
+    out = on_cluster(cluster, "sbatch " + " ".join(flags))
+    job_id = out.split()[-1]
+    print(f"hold-{name}: job {job_id}  ({resources.nodes} node(s), {resources.time})")
+    return job_id
