@@ -9,6 +9,13 @@ echo "name=@NAME@ repo=@REPO@ commit=@COMMIT@ run_id=@RUN_ID@ target=@TARGET@ ro
 
 export USER=${USER:-$(id -un)}
 
+# Inside a held allocation this script is a step that spans every node of the
+# run -- a nested srun can only reach the nodes of the step it is launched
+# from. One task per node: the first drives the run, the others hold their
+# node asleep and go when the step is cancelled at the end.
+INSIDE=@INSIDE@
+if (( INSIDE )) && (( ${SLURM_PROCID:-0} != 0 )); then exec sleep infinity; fi
+
 # The cluster's environment (node-local home, caches, tokens; sets the node up
 # if it has never been used), then the project's own job environment. Spliced
 # in rather than sourced from a path: this runs before the environment exists,
@@ -250,5 +257,9 @@ if (( timed_out )); then
     else
         echo "!!! requeue refused; resubmit by hand with the same run_id"
     fi
+fi
+if (( INSIDE )) && (( NODES > 1 )); then
+    # Release the nodes the sleeping tasks hold; this task goes with them.
+    scancel "$SLURM_JOB_ID.$SLURM_STEP_ID"
 fi
 exit "$status"

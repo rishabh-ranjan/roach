@@ -270,6 +270,7 @@ def submit(
         "@SECRETS_DIR@": secrets_dir,
         "@SETUP@": "\n".join(setup),
         "@NODES@": str(resources.nodes),
+        "@INSIDE@": "1" if inside is not None else "0",
         "@ENV@": env_sh,
         "@JOB_ENV@": job_env_sh,
         "@LAUNCH@": launch(resources, target, args_path, pixi_env, overlap=inside is not None),
@@ -283,7 +284,8 @@ def submit(
         on_cluster(cluster, f'cat > "{script_path}"', stdin=script)
         step = " ".join([
             "srun", f"--jobid={inside}", "--overlap",
-            f"--nodes={resources.nodes}", "--ntasks=1", "--cpus-per-task=1",
+            f"--nodes={resources.nodes}", f"--ntasks={resources.nodes}",
+            "--ntasks-per-node=1", "--cpus-per-task=1",
             f"--job-name={name}", "--chdir=/tmp", "--propagate=MEMLOCK",
             # --export=NONE leaves the task no PATH to find bash on.
             "--export=NONE", f"--output={log}", f"--error={log}",

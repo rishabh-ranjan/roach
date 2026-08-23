@@ -174,7 +174,7 @@ def test_the_job_scripts_take_no_configuration_from_the_environment():
     which is how the same submission produces two different runs."""
 
     # who we are, and what slurm tells the job about itself: not configuration
-    runtime = {"USER", "SLURM_RESTART_COUNT", "SLURM_JOB_ID"}
+    runtime = {"USER", "SLURM_RESTART_COUNT", "SLURM_JOB_ID", "SLURM_PROCID"}
     for name, text in scripts().items():
         read = set(re.findall(r"\$\{([A-Z_]+):-", text))
         assert read <= runtime, f"{name} reads {sorted(read - runtime)} from the env"
