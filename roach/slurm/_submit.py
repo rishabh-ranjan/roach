@@ -294,7 +294,7 @@ def submit(
             "--ntasks-per-node=1", "--cpus-per-task=1",
             f"--job-name={name}", "--chdir=/tmp", "--propagate=MEMLOCK",
             # --export=NONE leaves the task no PATH to find bash on.
-            "--export=NONE", f"--output={log}", f"--error={log}",
+            "--export=NONE", "--open-mode=append", f"--output={log}", f"--error={log}",
             "/bin/bash", script_path,
         ])
         # Detached: srun would otherwise block until the step ends.
