@@ -1,6 +1,6 @@
 [project]
 name = "roach"
-version = "0.3.4"
+version = "0.3.5"
 description = "fearless experiment management"
 readme = "README.md"
 authors = [{name = "Rishabh Ranjan", email = "rishabhranjan0207@gmail.com"}]

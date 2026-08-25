@@ -81,6 +81,13 @@ seed_lock() {  # in the new clone, before pixi install
     # the solve entirely.
     # Never seed over a lock we already have.
     if [[ -f pixi.lock ]]; then return 0; fi
+    # The submitter's own lock comes first: it was solved against this very
+    # manifest on the submit host, so the node never solves at all.
+    if [[ -n "@LOCK@" && -f "@LOCK@" ]]; then
+        cp "@LOCK@" pixi.lock
+        echo "prepare: seeded pixi.lock from the submitter (@LOCK@)"
+        return 0
+    fi
     local newest= d
     for d in "@CLONE_ROOT@"/*/; do
         [[ -f $d/.roach-ready && -f $d/pixi.lock ]] || continue

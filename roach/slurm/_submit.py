@@ -254,6 +254,11 @@ def submit(
         stdin=json.dumps(args, indent=1, sort_keys=True) + "\n",
     )
 
+    lock_path = ""
+    if (repo_root / "pixi.lock").is_file():
+        lock_path = f"{log_root}/{run_id}.pixi.lock"
+        on_cluster(cluster, f'cat > "{lock_path}"', stdin=(repo_root / "pixi.lock").read_text())
+
     script = files("roach.slurm").joinpath("bootstrap.sh").read_text()
     env_sh = cluster.env.read_text()
     job_env_sh = Path(job_env).expanduser().read_text() if job_env else ""
@@ -265,6 +270,7 @@ def submit(
         "@TARGET@": target,
         "@ROACH@": roach.__version__,
         "@ARGS@": args_path,
+        "@LOCK@": lock_path,
         "@LOG_ROOT@": log_root,
         "@CLONE_ROOT@": clone_root,
         "@SECRETS_DIR@": secrets_dir,
