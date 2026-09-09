@@ -12,7 +12,7 @@ from importlib.resources import files
 import pytest
 
 from roach.slurm import Resources, check_args, resolve, timestamp
-from roach.slurm._submit import home, launch, on_cluster
+from roach.slurm._submit import fill, home, launch, on_cluster
 from roach.slurm._submit import submit as submit_fn
 from roach.slurm.clusters.aws import AWS
 from roach.slurm.clusters.ilc import AMPERE, AMPERE_LO, BLACKWELL, ILC
@@ -310,3 +310,10 @@ def test_aws_presets_are_one_rank_per_gpu_and_send_no_account():
         flags = preset.sbatch_flags()
         assert not [f for f in flags if f.startswith(("--account", "--qos"))]
     assert "--account=infolab" in ampere().sbatch_flags()
+
+
+def test_a_placeholder_inside_a_spliced_piece_is_filled_too():
+    """node.sh reaches the script through @ENV@ and names @SECRETS_DIR@ itself;
+    a single pass in dict order left it literal on the node."""
+    out = fill("a @ENV@ c", {"@SECRETS_DIR@": "/s", "@ENV@": "cat @SECRETS_DIR@/github"})
+    assert out == "a cat /s/github c"

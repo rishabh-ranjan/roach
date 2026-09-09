@@ -184,6 +184,18 @@ def launch(
     )
 
 
+def fill(script: str, values: dict[str, str]) -> str:
+    """Placeholders in the spliced pieces (node.sh names @SECRETS_DIR@) are
+    filled too, whatever order the pieces land in."""
+    while True:
+        filled = script
+        for key, value in values.items():
+            filled = filled.replace(key, value)
+        if filled == script:
+            return filled
+        script = filled
+
+
 def submit(
     target: str,
     args: dict[str, Any],
@@ -262,7 +274,7 @@ def submit(
     script = files("roach.slurm").joinpath("bootstrap.sh").read_text()
     env_sh = cluster.site.read_text() + files("roach.slurm").joinpath("node.sh").read_text()
     job_env_sh = Path(job_env).expanduser().read_text() if job_env else ""
-    for key, value in {
+    script = fill(script, {
         "@REPO@": repo,
         "@COMMIT@": commit,
         "@RUN_ID@": run_id,
@@ -280,8 +292,7 @@ def submit(
         "@ENV@": env_sh,
         "@JOB_ENV@": job_env_sh,
         "@LAUNCH@": launch(resources, target, args_path, pixi_env, overlap=inside is not None),
-    }.items():
-        script = script.replace(key, value)
+    })
 
     if inside is not None:
         assert after is None, "a step inside a held allocation cannot wait on a job"
