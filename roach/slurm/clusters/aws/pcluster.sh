@@ -9,7 +9,7 @@ case ${1:-} in
     update)  pcluster update-cluster --cluster-name roach --cluster-configuration "$cfg" ;;
     delete)  pcluster delete-cluster --cluster-name roach ;;
     status)  pcluster describe-cluster --cluster-name roach --query '{status:clusterStatus,ip:headNode.publicIpAddress}' ;;
-    ip)      pcluster describe-cluster --cluster-name roach --query headNode.publicIpAddress --output text ;;
+    ip)      pcluster describe-cluster --cluster-name roach --query headNode.publicIpAddress | tr -d '"' ;;
     setup)
         # Once per cluster, after create: the head node's login puts slurm on
         # PATH and its HOME on /fsx for non-interactive ssh (which is how
@@ -19,7 +19,8 @@ case ${1:-} in
 set -euo pipefail
 sudo mkdir -p /fsx/home /fsx/scratch && sudo chown ubuntu:ubuntu /fsx/home /fsx/scratch
 mkdir -p /fsx/home/ubuntu /fsx/scratch/ubuntu/.secrets && chmod 700 /fsx/scratch/ubuntu/.secrets
-grep -q roach-head ~/.bashrc || { printf '# roach-head\nexport HOME=/fsx/home/ubuntu\nexport PATH=/opt/slurm/bin:$HOME/.pixi/bin:$PATH\ncd "$HOME"\n' | cat - ~/.bashrc > ~/.bashrc.new && mv ~/.bashrc.new ~/.bashrc; }
+[[ -L /fsx/home/ubuntu/scratch ]] || ln -s /fsx/scratch/ubuntu /fsx/home/ubuntu/scratch
+grep -q roach-head /home/ubuntu/.bashrc || { printf '# roach-head\nexport HOME=/fsx/home/ubuntu\nexport PATH=/opt/slurm/bin:$HOME/.pixi/bin:$PATH\ncd "$HOME"\n' | cat - /home/ubuntu/.bashrc > /home/ubuntu/.bashrc.new && mv /home/ubuntu/.bashrc.new /home/ubuntu/.bashrc; }
 REMOTE
         for s in github wandb huggingface; do
             [[ -r $secrets/$s ]] && scp -q -i "$secrets/aws_ssh" "$secrets/$s" "ubuntu@$ip:/fsx/scratch/ubuntu/.secrets/$s"
