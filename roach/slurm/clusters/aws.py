@@ -6,7 +6,8 @@ minutes after the job ends, so a queue with no job is free.
 Everything the cluster is made of is under `clusters/aws/`: `cluster.yaml`
 is the whole definition and `pcluster.sh` creates, updates, deletes and sets
 it up. Spend is metered in dollars against the fellowship's credits (see the
-roach skill); which queue to use is the human's instruction, never a default.
+roach skill). A submission goes to `H100` (a p5.48xlarge) unless the
+instruction names another shape: per dollar it does the most work.
 """
 
 from pathlib import Path
@@ -94,3 +95,22 @@ A100_SPOT = Resources(
     dependency=None,
 )
 """The p4d as spot."""
+
+A10G = Resources(
+    partition="a10g",
+    account=None,
+    qos=None,
+    time="1-00:00:00",
+    gpus="4",
+    cpus_per_task=12,  # 48 vCPUs / 4 ranks
+    ntasks=None,
+    exclusive=True,
+    mem=None,
+    mem_per_gpu=None,
+    constraint=None,
+    nodelist=None,
+    reservation=None,
+    dependency=None,
+)
+"""A g5.12xlarge: 4 x A10G-24G, 48 vCPUs, 192 GB, no EFA (~$5.7/h). For
+probes and debugging, not for training; one node."""

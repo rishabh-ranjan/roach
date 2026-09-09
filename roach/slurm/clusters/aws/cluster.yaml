@@ -69,6 +69,15 @@ Scheduling:
         SubnetIds: [subnet-0dc57517de388c39b]
         PlacementGroup:
           Enabled: true
+    - Name: a10g
+      CapacityType: ONDEMAND
+      ComputeResources:
+        - Name: g5
+          InstanceType: g5.12xlarge
+          MinCount: 0
+          MaxCount: 1
+      Networking:
+        SubnetIds: [subnet-0dc57517de388c39b]
 SharedStorage:
   - Name: fsx
     StorageType: FsxLustre

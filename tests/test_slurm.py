@@ -302,10 +302,12 @@ def test_the_launcher_spells_out_the_shape_and_overlaps_only_inside_a_hold():
 def test_aws_presets_are_one_rank_per_gpu_and_send_no_account():
     """ParallelCluster runs no accounting: an --account or --qos there is
     rejected by sbatch, so None means the flag is not sent."""
-    from roach.slurm.clusters.aws import A100, A100_SPOT, H100, H100_SPOT
+    from roach.slurm.clusters.aws import A10G, A100, A100_SPOT, H100, H100_SPOT
 
     for preset in (H100, H100_SPOT, A100, A100_SPOT):
         assert preset.ranks == 8
+    for preset in (H100, H100_SPOT, A100, A100_SPOT, A10G):
+        assert preset.ranks == int(preset.gpus)
         assert preset.ranks * preset.cpus_per_task <= 192
         flags = preset.sbatch_flags()
         assert not [f for f in flags if f.startswith(("--account", "--qos"))]
