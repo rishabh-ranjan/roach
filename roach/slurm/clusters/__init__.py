@@ -17,8 +17,8 @@ class Cluster:
     name: str
     site: Path
     """Declarations only, sourced ahead of `roach/slurm/node.sh` on every node
-    the job holds: `site_detect`, `NODE_HOME`, `SCRATCH`, `SLURM_BIN`,
-    `SLURM_CONF`, `TMPROOT`, `IN_SCRATCH` and `site_job_env`. node.sh is what
+    the job holds: `site_detect`, `NODE_HOME`, `SCRATCH`, `SLURM_BIN` (and an exported `SLURM_CONF` where the batch environment lacks one),
+    `TMPROOT`, `IN_SCRATCH` and `site_job_env`. node.sh is what
     acts on them, the same way everywhere; a site file that computes anything
     is a cluster leaking into the core."""
     grace_secs: int

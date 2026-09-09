@@ -63,7 +63,6 @@ if [[ $(pixi --version) != "pixi $PIXI_VERSION" ]]; then
     echo "node: pixi $(pixi --version | cut -d' ' -f2) -> $PIXI_VERSION"
     pixi self-update --version "$PIXI_VERSION" >/dev/null
 fi
-[[ -n $SLURM_CONF ]] && export SLURM_CONF
 unset PYTHONPATH  # points into a home that is not this job's home
 # pixi's package cache on the same filesystem as the clones, so environments
 # reflink from it.
