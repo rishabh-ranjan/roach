@@ -1,0 +1,96 @@
+"""AWS, as a slurm cluster: an AWS ParallelCluster named `roach` in
+us-east-1, driven from here over `ssh aws`. The head node is permanent and
+tiny; the queues are EC2 fleets that launch a node per job and terminate it
+minutes after the job ends, so a queue with no job is free.
+
+Everything the cluster is made of is under `clusters/aws/`: `cluster.yaml`
+is the whole definition and `pcluster.sh` creates, updates, deletes and sets
+it up. Spend is metered in dollars against the fellowship's credits (see the
+roach skill); which queue to use is the human's instruction, never a default.
+"""
+
+from pathlib import Path
+
+from roach.slurm.clusters import Cluster
+from roach.slurm.resources import Resources
+
+AWS = Cluster(
+    name="aws",
+    site=Path(__file__).with_name("aws.site.sh"),
+    grace_secs=120,  # a spot interruption gives two minutes' notice
+    submit_host="aws",  # ssh alias to the head node, keys, no gate
+)
+
+H100 = Resources(
+    partition="h100",
+    account=None,  # ParallelCluster runs no accounting
+    qos=None,
+    time="7-00:00:00",  # the partitions have no limit; a run that checkpoints requeues through it
+    gpus="8",
+    cpus_per_task=24,  # 192 vCPUs / 8 ranks
+    ntasks=None,
+    exclusive=True,
+    mem=None,
+    mem_per_gpu=None,
+    constraint=None,
+    nodelist=None,
+    reservation=None,
+    dependency=None,
+)
+"""A p5.48xlarge: 8 x H100-80G, 192 vCPUs, 2 TB, EFA. On demand, billed by
+the second while the node is up (~$55/h). Up to 4 nodes per job."""
+
+H100_SPOT = Resources(
+    partition="h100-spot",
+    account=None,
+    qos=None,
+    time="7-00:00:00",
+    gpus="8",
+    cpus_per_task=24,
+    ntasks=None,
+    exclusive=True,
+    mem=None,
+    mem_per_gpu=None,
+    constraint=None,
+    nodelist=None,
+    reservation=None,
+    dependency=None,
+)
+"""The same node as spot: cheaper when there is any, reclaimed with two
+minutes' notice, so only for runs that resume."""
+
+A100 = Resources(
+    partition="a100",
+    account=None,
+    qos=None,
+    time="7-00:00:00",
+    gpus="8",
+    cpus_per_task=12,  # 96 vCPUs / 8 ranks
+    ntasks=None,
+    exclusive=True,
+    mem=None,
+    mem_per_gpu=None,
+    constraint=None,
+    nodelist=None,
+    reservation=None,
+    dependency=None,
+)
+"""A p4d.24xlarge: 8 x A100-40G, 96 vCPUs, 1.1 TB, EFA. On demand (~$33/h)."""
+
+A100_SPOT = Resources(
+    partition="a100-spot",
+    account=None,
+    qos=None,
+    time="7-00:00:00",
+    gpus="8",
+    cpus_per_task=12,
+    ntasks=None,
+    exclusive=True,
+    mem=None,
+    mem_per_gpu=None,
+    constraint=None,
+    nodelist=None,
+    reservation=None,
+    dependency=None,
+)
+"""The p4d as spot."""

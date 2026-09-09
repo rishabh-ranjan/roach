@@ -1,0 +1,78 @@
+Region: us-east-1
+Image:
+  Os: ubuntu2204
+HeadNode:
+  InstanceType: t3.medium
+  Networking:
+    SubnetId: subnet-010977c26143e3853
+    ElasticIp: true
+  Ssh:
+    KeyName: roach
+  Iam:
+    AdditionalIamPolicies:
+      - Policy: arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+Scheduling:
+  Scheduler: slurm
+  SlurmSettings:
+    ScaledownIdletime: 5
+    QueueUpdateStrategy: DRAIN
+  SlurmQueues:
+    - Name: h100
+      CapacityType: ONDEMAND
+      ComputeResources:
+        - Name: p5
+          InstanceType: p5.48xlarge
+          MinCount: 0
+          MaxCount: 4
+          Efa:
+            Enabled: true
+      Networking:
+        SubnetIds: [subnet-0dc57517de388c39b]
+        PlacementGroup:
+          Enabled: true
+    - Name: h100-spot
+      CapacityType: SPOT
+      ComputeResources:
+        - Name: p5
+          InstanceType: p5.48xlarge
+          MinCount: 0
+          MaxCount: 4
+          Efa:
+            Enabled: true
+      Networking:
+        SubnetIds: [subnet-0dc57517de388c39b]
+        PlacementGroup:
+          Enabled: true
+    - Name: a100
+      CapacityType: ONDEMAND
+      ComputeResources:
+        - Name: p4d
+          InstanceType: p4d.24xlarge
+          MinCount: 0
+          MaxCount: 4
+          Efa:
+            Enabled: true
+      Networking:
+        SubnetIds: [subnet-0dc57517de388c39b]
+        PlacementGroup:
+          Enabled: true
+    - Name: a100-spot
+      CapacityType: SPOT
+      ComputeResources:
+        - Name: p4d
+          InstanceType: p4d.24xlarge
+          MinCount: 0
+          MaxCount: 4
+          Efa:
+            Enabled: true
+      Networking:
+        SubnetIds: [subnet-0dc57517de388c39b]
+        PlacementGroup:
+          Enabled: true
+SharedStorage:
+  - Name: fsx
+    StorageType: FsxLustre
+    MountDir: /fsx
+    FsxLustreSettings:
+      StorageCapacity: 1200
+      DeploymentType: SCRATCH_2

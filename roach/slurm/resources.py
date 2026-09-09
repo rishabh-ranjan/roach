@@ -15,8 +15,9 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class Resources:
     partition: str
-    account: str
-    qos: str
+    account: str | None
+    """None on a cluster without accounting (no `--account` is sent)."""
+    qos: str | None
     time: str
     """Wall clock as slurm spells it, e.g. "7-00:00:00"."""
     gpus: str
@@ -102,13 +103,15 @@ class Resources:
     def sbatch_flags(self) -> list[str]:
         flags = [
             f"--partition={self.partition}",
-            f"--account={self.account}",
-            f"--qos={self.qos}",
             f"--time={self.time}",
             f"--nodes={self.nodes}",
             f"--ntasks-per-node={self.ranks_per_node}",
             f"--cpus-per-task={self.cpus_per_task}",
         ]
+        if self.account:
+            flags.append(f"--account={self.account}")
+        if self.qos:
+            flags.append(f"--qos={self.qos}")
         if self.gpus != "0":
             flags.append(f"--gres=gpu:{self.gpus}")
         if self.exclusive:
