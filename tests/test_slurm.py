@@ -14,6 +14,7 @@ import pytest
 from roach.slurm import Resources, check_args, resolve, timestamp
 from roach.slurm._submit import home, launch, on_cluster
 from roach.slurm._submit import submit as submit_fn
+from roach.slurm.clusters.aws import AWS
 from roach.slurm.clusters.ilc import AMPERE, AMPERE_LO, BLACKWELL, ILC
 from roach.slurm.clusters.marlowe import H100, H100_PREEMPT, MARLOWE
 
@@ -78,6 +79,7 @@ def scripts() -> dict[str, str]:
         "node.sh": files("roach.slurm").joinpath("node.sh").read_text(),
         "ilc.site.sh": ILC.site.read_text(),
         "marlowe.site.sh": MARLOWE.site.read_text(),
+        "aws.site.sh": AWS.site.read_text(),
     }
 
 
@@ -215,7 +217,7 @@ def test_the_core_knows_no_cluster_and_no_project():
         if p.name.endswith((".py", ".sh")) and p.name != "__init__.py"  # the usage example
     ]
     words = ("blackwell", "ampere", "infolab", "il-lo", "/lfs/", "/dfs/", "cargo_target", "/dev/shm",
-             "h100", "m000137", "/users/", "local_scratch", "/cm/shared")
+             "h100", "m000137", "/fsx", "parallelcluster", "/opt/slurm", "/users/", "local_scratch", "/cm/shared")
     for p in core:
         text = p.read_text().lower()
         hit = [w for w in words if w in text]
@@ -295,3 +297,16 @@ def test_the_launcher_spells_out_the_shape_and_overlaps_only_inside_a_hold():
     for line in (plain, held):
         assert "--nodes=1 --ntasks=8 --ntasks-per-node=8 --cpus-per-task=16" in line
     assert "--overlap" not in plain and "--overlap" in held
+
+
+def test_aws_presets_are_one_rank_per_gpu_and_send_no_account():
+    """ParallelCluster runs no accounting: an --account or --qos there is
+    rejected by sbatch, so None means the flag is not sent."""
+    from roach.slurm.clusters.aws import A100, A100_SPOT, H100, H100_SPOT
+
+    for preset in (H100, H100_SPOT, A100, A100_SPOT):
+        assert preset.ranks == 8
+        assert preset.ranks * preset.cpus_per_task <= 192
+        flags = preset.sbatch_flags()
+        assert not [f for f in flags if f.startswith(("--account", "--qos"))]
+    assert "--account=infolab" in ampere().sbatch_flags()
