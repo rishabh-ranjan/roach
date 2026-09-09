@@ -14,6 +14,9 @@ case ${1:-} in
         # Once per cluster, after create: the head node's login puts slurm on
         # PATH and its HOME on /fsx for non-interactive ssh (which is how
         # roach reaches it), and the secrets go where every node reads them.
+        # EC2 makes this role the first time an account asks for spot; the
+        # fleet's own role may not, so it is made here.
+        aws iam create-service-linked-role --aws-service-name spot.amazonaws.com >/dev/null 2>&1 || true
         ip=$("$0" ip)
         ssh -i "$secrets/aws_ssh" -o StrictHostKeyChecking=accept-new "ubuntu@$ip" bash -s <<'REMOTE'
 set -euo pipefail
