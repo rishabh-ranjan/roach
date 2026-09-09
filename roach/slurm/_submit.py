@@ -51,7 +51,15 @@ class Job:
 
     @property
     def state(self) -> str:
-        out = on_cluster(self.cluster, f"sacct -j {self.id} -n --format=State")
+        """scontrol knows every live and recently ended job on any slurm;
+        sacct knows the older ones only where accounting is on."""
+        out = on_cluster(
+            self.cluster,
+            f"scontrol show job {self.id} -o 2>/dev/null || sacct -j {self.id} -n --format=State",
+        )
+        for word in out.split():
+            if word.startswith("JobState="):
+                return word.partition("=")[2]
         return out.split("\n")[0].strip() or "UNKNOWN"
 
 
