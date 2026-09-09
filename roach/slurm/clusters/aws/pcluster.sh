@@ -6,7 +6,15 @@ set -a; . "$secrets/aws"; set +a
 cfg="$here/cluster.yaml"
 case ${1:-} in
     create)  pcluster create-cluster --cluster-name roach --cluster-configuration "$cfg" --rollback-on-failure false ;;
-    update)  pcluster update-cluster --cluster-name roach --cluster-configuration "$cfg" ;;
+    update)
+        # A queue change needs the fleet stopped; running nodes are drained
+        # first, so wait for the queue to empty before this.
+        pcluster update-compute-fleet --cluster-name roach --status STOP_REQUESTED >/dev/null
+        until [[ $(pcluster describe-compute-fleet --cluster-name roach | python3 -c 'import json,sys;print(json.load(sys.stdin)["status"])') == STOPPED ]]; do sleep 10; done
+        pcluster update-cluster --cluster-name roach --cluster-configuration "$cfg"
+        until [[ $(pcluster describe-cluster --cluster-name roach | python3 -c 'import json,sys;print(json.load(sys.stdin)["clusterStatus"])') != UPDATE_IN_PROGRESS ]]; do sleep 20; done
+        pcluster update-compute-fleet --cluster-name roach --status START_REQUESTED >/dev/null
+        "$0" status ;;
     delete)  pcluster delete-cluster --cluster-name roach ;;
     status)  pcluster describe-cluster --cluster-name roach --query '{status:clusterStatus,ip:headNode.publicIpAddress}' ;;
     ip)      pcluster describe-cluster --cluster-name roach --query headNode.publicIpAddress | tr -d '"' ;;
