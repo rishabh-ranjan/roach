@@ -75,8 +75,9 @@ def scripts() -> dict[str, str]:
     """Every shell file that reaches a compute node, by name."""
     return {
         "bootstrap.sh": files("roach.slurm").joinpath("bootstrap.sh").read_text(),
-        "ilc.env.sh": ILC.env.read_text(),
-        "marlowe.env.sh": MARLOWE.env.read_text(),
+        "node.sh": files("roach.slurm").joinpath("node.sh").read_text(),
+        "ilc.site.sh": ILC.site.read_text(),
+        "marlowe.site.sh": MARLOWE.site.read_text(),
     }
 
 

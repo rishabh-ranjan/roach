@@ -13,7 +13,7 @@ from roach.slurm.resources import Resources
 
 MARLOWE = Cluster(
     name="marlowe",
-    env=Path(__file__).with_name("marlowe.env.sh"),
+    site=Path(__file__).with_name("marlowe.site.sh"),
     grace_secs=900,  # GraceTime on the preempt partition
     submit_host="marlowe",  # ssh alias; Duo-gated, so a ControlMaster must be up
 )

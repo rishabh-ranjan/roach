@@ -11,7 +11,7 @@ from roach.slurm.resources import Resources
 
 ILC = Cluster(
     name="ilc",
-    env=Path(__file__).with_name("ilc.env.sh"),
+    site=Path(__file__).with_name("ilc.site.sh"),
     grace_secs=300,  # the preemption GraceTime on every qos
     submit_host=None,  # sessions run on an ILC node; the login host has no ~/scratch
 )

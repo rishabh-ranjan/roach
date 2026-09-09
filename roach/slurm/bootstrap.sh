@@ -16,8 +16,9 @@ export USER=${USER:-$(id -un)}
 INSIDE=@INSIDE@
 if (( INSIDE )) && (( ${SLURM_PROCID:-0} != 0 )); then exec sleep infinity; fi
 
-# The cluster's environment (node-local home, caches, tokens; sets the node up
-# if it has never been used), then the project's own job environment. Spliced
+# The cluster's site declarations and roach's node environment (home, pixi,
+# links into the shared store, tokens; sets the node up if it has never been
+# used), then the project's own job environment. Spliced
 # in rather than sourced from a path: this runs before the environment exists,
 # so roach is not importable yet, and inlining also pins both to the submission
 # instead of to whatever is installed later. It comes before the clones so they
@@ -231,7 +232,7 @@ unset SLURM_CPUS_PER_TASK
 # shell* out of the job, this one lets the tasks inherit the environment this
 # script just built. Without it srun starts them nearly empty (--export=NONE
 # sets SLURM_EXPORT_ENV=NONE) and they find neither pixi nor the tokens, caches
-# and node-local HOME that env.sh set up.
+# and node-local HOME that node.sh set up.
 #
 # --frozen: the clone is shared, so a rank that re-solved would rewrite
 # pixi.lock underneath every other job at this commit. The lock is the one

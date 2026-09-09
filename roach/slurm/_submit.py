@@ -145,7 +145,7 @@ def launch(
 
     `--export=ALL`. There is one rule, applied at two layers: **nothing from the
     submitting shell, everything from the job's own environment.** This srun is
-    the second layer -- it runs *inside* the job, after env.sh has built the
+    the second layer -- it runs *inside* the job, after node.sh has built the
     node-local HOME, the caches, the PATH to pixi and the tokens, and without
     ALL it would start the ranks nearly empty and find none of it. The
     `sbatch --export=NONE` that crosses from the submitting shell is the first
@@ -260,7 +260,7 @@ def submit(
         on_cluster(cluster, f'cat > "{lock_path}"', stdin=(repo_root / "pixi.lock").read_text())
 
     script = files("roach.slurm").joinpath("bootstrap.sh").read_text()
-    env_sh = cluster.env.read_text()
+    env_sh = cluster.site.read_text() + files("roach.slurm").joinpath("node.sh").read_text()
     job_env_sh = Path(job_env).expanduser().read_text() if job_env else ""
     for key, value in {
         "@REPO@": repo,

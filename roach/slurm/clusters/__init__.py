@@ -2,7 +2,7 @@
 
 Everything in `roach.slurm` outside this package is any-slurm: the clone
 protocol, the launcher, the requeue-on-timeout dance. What differs between
-clusters -- how a node is brought up, where scratch and secrets live, how long
+clusters -- where the home and the shared store are, where slurm lives, how long
 preemption gives a job to save -- is a `Cluster`, and each supported cluster is
 a module here that defines one plus the `Resources` shapes that are usable on
 it. Submit with `cluster=<module>.<NAME>`.
@@ -15,11 +15,12 @@ from pathlib import Path
 @dataclass(frozen=True)
 class Cluster:
     name: str
-    env: Path
-    """Shell sourced in the batch script before anything else, on every node the
-    job holds: node-local HOME, scratch, caches, package manager, tokens. Must
-    not read configuration from the environment (see the tests) and must fail
-    loudly on a node it cannot bring up."""
+    site: Path
+    """Declarations only, sourced ahead of `roach/slurm/node.sh` on every node
+    the job holds: `site_detect`, `NODE_HOME`, `SCRATCH`, `SLURM_BIN`,
+    `SLURM_CONF`, `TMPROOT`, `IN_SCRATCH` and `site_job_env`. node.sh is what
+    acts on them, the same way everywhere; a site file that computes anything
+    is a cluster leaking into the core."""
     grace_secs: int
     """Seconds between preemption's SIGTERM and the kill. The wall clock
     signals the batch script this long before the limit (`--signal=B:USR1@`),

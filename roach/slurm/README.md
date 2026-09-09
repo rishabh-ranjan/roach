@@ -38,8 +38,9 @@ happened to export.
    beartype). A typo fails in a second instead of forty minutes into a job.
 3. Writes `args` as JSON next to the run's logs, mints a `run_id`, and hands
    slurm a generated script -- on stdin, so nothing needs shared storage.
-4. In the job: brings the node up (the cluster's env: node-local `HOME`,
-   caches, tokens, first-login setup), sources the project's `job_env`, then
+4. In the job: brings the node up (`node.sh`, driven by the cluster's site
+   file: the home, a pinned pixi, links into the shared store, tokens),
+   sources the project's `job_env`, then
    takes the node's clone of **that commit** —
    building it, `pixi install` and your `setup` commands and all, if it is the
    first job at that commit on that node.
@@ -195,13 +196,23 @@ all.
 ## Clusters
 
 `roach.slurm.clusters.<name>` is everything roach knows about one cluster: a
-`Cluster` (the shell that brings a node up, the preemption grace) and the
+`Cluster` (the site file, the preemption grace, the submit host) and the
 `Resources` presets that are usable there. Everything outside that package is
 any-slurm. Supported:
 
 | module | cluster |
 | --- | --- |
 | `roach.slurm.clusters.ilc` | ILC: partition `il`, qos `il-interactive` / `il` / `il-lo` |
+| `roach.slurm.clusters.marlowe` | Marlowe: partitions `preempt` / `batch`, over `ssh marlowe` |
+
+A site file (`<name>.site.sh`) is declarations only -- where the node's home
+is, where the shared store is, where slurm lives, where a job's scratch goes --
+and `roach/slurm/node.sh` acts on them the same way on every cluster: the
+home exists, `~/scratch` links to the shared store, a pinned pixi is in
+`~/.pixi`, the tokens in `secrets_dir` are exported, `TMPDIR` is set. Roach
+assumes nothing else about the home: a dotfiles checkout, global tools, a
+shell are the user's login's business and are never read by a job. Adding a
+cluster is a site file and a module of presets.
 
 A project's own environment -- a build cache, a limit its runs need -- is not
 the cluster's business: pass it as `job_env`, a shell file sourced after the
