@@ -14,7 +14,7 @@ SCRATCH=/scratch/m000137-pm06/$USER
 SLURM_BIN=/cm/shared/apps/slurm/current/bin
 export SLURM_CONF=/cm/shared/apps/slurm/var/etc/slurm/slurm.conf
 # A requeue gets a fresh one, so nothing a resume needs goes here.
-TMPROOT=/local_scratch/$USER.$SLURM_JOB_ID
+TMPROOT=/local_scratch/$USER.$SLURM_JOB_ID/tmp
 IN_SCRATCH=(.cache roach_clones)
 site_job_env() {
     # The site's `module load mps`: a per-job MPS pipe location, which CUDA

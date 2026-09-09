@@ -11,6 +11,6 @@ site_detect() { [[ -d /opt/parallelcluster ]]; }
 NODE_HOME=/fsx/home/$USER
 SCRATCH=/fsx/scratch/$USER
 SLURM_BIN=/opt/slurm/bin
-TMPROOT=/scratch/$USER
+TMPROOT=/scratch/$USER/tmp
 IN_SCRATCH=()
 site_job_env() { :; }

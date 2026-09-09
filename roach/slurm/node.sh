@@ -69,7 +69,7 @@ unset PYTHONPATH  # points into a home that is not this job's home
 export XDG_CACHE_HOME=$HOME/.cache
 mkdir -p "$XDG_CACHE_HOME"
 
-export TMPDIR=$TMPROOT/tmp
+export TMPDIR=$TMPROOT
 mkdir -p "$TMPDIR" || die "no scratch at $TMPROOT on $(hostname -s)"
 
 exec 8>&-
