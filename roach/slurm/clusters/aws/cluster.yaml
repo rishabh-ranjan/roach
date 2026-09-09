@@ -73,7 +73,7 @@ Scheduling:
       CapacityType: ONDEMAND
       ComputeResources:
         - Name: g5
-          InstanceType: g5.12xlarge
+          InstanceType: g5.2xlarge
           MinCount: 0
           MaxCount: 1
       Networking:

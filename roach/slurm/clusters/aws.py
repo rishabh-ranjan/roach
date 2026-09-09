@@ -101,8 +101,8 @@ A10G = Resources(
     account=None,
     qos=None,
     time="1-00:00:00",
-    gpus="4",
-    cpus_per_task=12,  # 48 vCPUs / 4 ranks
+    gpus="1",
+    cpus_per_task=8,
     ntasks=None,
     exclusive=True,
     mem=None,
@@ -112,5 +112,5 @@ A10G = Resources(
     reservation=None,
     dependency=None,
 )
-"""A g5.12xlarge: 4 x A10G-24G, 48 vCPUs, 192 GB, no EFA (~$5.7/h). For
-probes and debugging, not for training; one node."""
+"""A g5.2xlarge: 1 x A10G-24G, 8 vCPUs, 32 GB (~$1.2/h). For probes and
+debugging, not for training; one node."""
