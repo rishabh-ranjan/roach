@@ -69,6 +69,19 @@ Scheduling:
         SubnetIds: [subnet-0dc57517de388c39b]
         PlacementGroup:
           Enabled: true
+    - Name: h100-1
+      CapacityType: ONDEMAND
+      ComputeResources:
+        - Name: p5-4xl
+          InstanceType: p5.4xlarge
+          MinCount: 0
+          MaxCount: 4
+          Efa:
+            Enabled: true
+      Networking:
+        SubnetIds: [subnet-0dc57517de388c39b]
+        PlacementGroup:
+          Enabled: true
     - Name: a10g
       CapacityType: ONDEMAND
       ComputeResources:

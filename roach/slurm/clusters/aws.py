@@ -96,6 +96,26 @@ A100_SPOT = Resources(
 )
 """The p4d as spot."""
 
+H100_1 = Resources(
+    partition="h100-1",
+    account=None,
+    qos=None,
+    time="7-00:00:00",
+    gpus="1",
+    cpus_per_task=16,
+    ntasks=None,
+    exclusive=True,
+    mem=None,
+    mem_per_gpu=None,
+    constraint=None,
+    nodelist=None,
+    reservation=None,
+    dependency=None,
+)
+"""A p5.4xlarge: 1 x H100-80G, 16 vCPUs, 256 GB, 100 Gb/s EFA, 3.8 TB NVMe.
+What the 64-vCPU P quota allows (four of them); `nodes=4` is four cards over
+EFA, not NVLink. The stopgap until the quota reaches a p5.48xlarge."""
+
 A10G = Resources(
     partition="a10g",
     account=None,
