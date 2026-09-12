@@ -97,7 +97,7 @@ A100_SPOT = Resources(
 """The p4d as spot."""
 
 H100_1 = Resources(
-    partition="h100-1",
+    partition="h100-1d,h100-1a,h100-1b,h100-1c,h100-1e,h100-1f",  # a queue per AZ; slurm takes the first with a node
     account=None,
     qos=None,
     time="7-00:00:00",
@@ -114,7 +114,8 @@ H100_1 = Resources(
 )
 """A p5.4xlarge: 1 x H100-80G, 16 vCPUs, 256 GB, 100 Gb/s EFA, 3.8 TB NVMe.
 What the 64-vCPU P quota allows (four of them); `nodes=4` is four cards over
-EFA, not NVLink. The stopgap until the quota reaches a p5.48xlarge."""
+EFA, not NVLink, and all in one zone. The stopgap until the quota reaches a
+p5.48xlarge. FSx is in 1d; a node in another zone reads it across zones."""
 
 A10G = Resources(
     partition="a10g",

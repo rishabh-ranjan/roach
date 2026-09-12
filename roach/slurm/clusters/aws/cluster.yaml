@@ -69,7 +69,12 @@ Scheduling:
         SubnetIds: [subnet-0dc57517de388c39b]
         PlacementGroup:
           Enabled: true
-    - Name: h100-1
+    # One queue per AZ: p5.4xlarge capacity comes and goes per zone, and a
+    # queue may span zones only without EFA and without managed FSx. A job
+    # lists all six partitions and slurm takes the first with a node; FSx is
+    # in 1d, so that one comes first, and a node elsewhere reads it across
+    # zones (slower, $0.01/GB each way).
+    - Name: h100-1d
       CapacityType: ONDEMAND
       ComputeResources:
         - Name: p5-4xl
@@ -80,6 +85,71 @@ Scheduling:
             Enabled: true
       Networking:
         SubnetIds: [subnet-0dc57517de388c39b]
+        PlacementGroup:
+          Enabled: true
+    - Name: h100-1a
+      CapacityType: ONDEMAND
+      ComputeResources:
+        - Name: p5-4xl
+          InstanceType: p5.4xlarge
+          MinCount: 0
+          MaxCount: 4
+          Efa:
+            Enabled: true
+      Networking:
+        SubnetIds: [subnet-0cfd373935a7e13fe]
+        PlacementGroup:
+          Enabled: true
+    - Name: h100-1b
+      CapacityType: ONDEMAND
+      ComputeResources:
+        - Name: p5-4xl
+          InstanceType: p5.4xlarge
+          MinCount: 0
+          MaxCount: 4
+          Efa:
+            Enabled: true
+      Networking:
+        SubnetIds: [subnet-09ef36bfe992170fc]
+        PlacementGroup:
+          Enabled: true
+    - Name: h100-1c
+      CapacityType: ONDEMAND
+      ComputeResources:
+        - Name: p5-4xl
+          InstanceType: p5.4xlarge
+          MinCount: 0
+          MaxCount: 4
+          Efa:
+            Enabled: true
+      Networking:
+        SubnetIds: [subnet-05346e680b6132946]
+        PlacementGroup:
+          Enabled: true
+    - Name: h100-1e
+      CapacityType: ONDEMAND
+      ComputeResources:
+        - Name: p5-4xl
+          InstanceType: p5.4xlarge
+          MinCount: 0
+          MaxCount: 4
+          Efa:
+            Enabled: true
+      Networking:
+        SubnetIds: [subnet-0f561dd1c8d8cec64]
+        PlacementGroup:
+          Enabled: true
+    - Name: h100-1f
+      CapacityType: ONDEMAND
+      ComputeResources:
+        - Name: p5-4xl
+          InstanceType: p5.4xlarge
+          MinCount: 0
+          MaxCount: 4
+          Efa:
+            Enabled: true
+      Networking:
+        SubnetIds: [subnet-08826319e60b90dfb]
         PlacementGroup:
           Enabled: true
     - Name: a10g
@@ -96,5 +166,4 @@ SharedStorage:
     StorageType: FsxLustre
     MountDir: /fsx
     FsxLustreSettings:
-      StorageCapacity: 1200
-      DeploymentType: SCRATCH_2
+      FileSystemId: fs-09245015f32279013
