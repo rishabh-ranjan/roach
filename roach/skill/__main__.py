@@ -1,10 +1,5 @@
 import sys
 
-from roach.skill import hook, reconcile
+from roach.skill import reconcile
 
-args = [a for a in sys.argv[1:] if a != "--hook"]
-root = args[0] if args else None
-log = reconcile(root)
-if "--hook" in sys.argv:
-    log += hook(root)
-print("\n".join(log))
+print("\n".join(reconcile(sys.argv[1] if len(sys.argv) > 1 else None)))

@@ -40,41 +40,33 @@ preemption and the wall clock. **[roach/slurm/README.md](roach/slurm/README.md)*
 
 The package ships [Claude Code skills](roach/skill): `roach-slurm` for driving
 `roach.slurm` and `roach-paper` for making figures and tables with
-`roach.paper`. They install themselves into the project that installs `roach`,
-never globally, so each project's skills match its own `roach`:
-
-```
-<project>/.claude/skills/roach-* -> <site-packages>/roach/skill/roach-*
-```
-
-pip cannot run code at install time, so `import roach` does it: it reconciles
-the links with the skills the installed package ships, silently, and touches
-nothing when they are already right. The project is the nearest parent of the
-working directory with a `pyproject.toml`, `pixi.toml` or `.git`.
-`python -m roach.skill [project]` does the same by hand and prints what changed.
-
-Reconciling adds missing links and removes stale ones: a renamed or removed
-skill, a link into an old environment. A link is roach's if its target runs
-through `roach/skill/`; anything else in `.claude/skills/` is left alone, and a
-real directory in a skill's place is skipped. The links are absolute, so
-gitignore `.claude/skills/roach-*`.
-
-They are symlinks into the installed package: an editable install tracks the
-clone (`git pull` updates it), a pinned install updates when the pin is
-bumped.
-
-A fresh clone has no links until something imports `roach`. To have the skills
-from the first Claude Code session, run this once per project and commit
-`.claude/settings.json`:
+`roach.paper`. Install them into the project that installs `roach`, never
+globally, so each project's skills match its own `roach`. Once, when setting
+the project up:
 
 ```bash
-python -m roach.skill --hook
+pixi run python -m roach.skill
+git add .claude/skills && git commit -m "claude: roach skills"
 ```
 
-It adds a `SessionStart` hook that imports `roach` in the project's
-environment (`pixi run`, `uv run` or plain `python`, by which lock file the
-project has), so every collaborator gets it with the clone. Keep it in the
-project, not in a user's global settings.
+```
+.claude/skills/roach-slurm -> ../../.pixi/envs/default/lib/python3.12/site-packages/roach/skill/roach-slurm
+```
+
+The links are relative symlinks into the project's own environment, so they
+are committed and work in every clone after `pixi install`. They point at the
+installed package rather than copying it: bumping `roach` in the environment
+updates the skills, with nothing to re-run. Re-run the command only when the
+link path itself changes -- a new python minor version, a renamed
+environment, or a `roach` release that adds, renames or removes a skill.
+
+Re-running reconciles: it adds missing links and removes stale ones. A link is
+roach's if its target runs through `roach/skill/`; anything else in
+`.claude/skills/` is left alone, and a real directory in a skill's place is
+skipped. The project is the nearest parent of the working directory with a
+`pyproject.toml`, `pixi.toml` or `.git`; pass a directory to override. When
+the package lives outside the project (an editable install of a clone
+elsewhere) the links are absolute: gitignore them instead.
 
 ## roach paper
 
