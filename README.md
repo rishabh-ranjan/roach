@@ -38,30 +38,35 @@ preemption and the wall clock. **[roach/slurm/README.md](roach/slurm/README.md)*
 
 ## claude code skills
 
-The package ships two [Claude Code skills](roach/skill): `roach-slurm` for
-driving `roach.slurm` and `roach-paper` for making figures and tables with
-`roach.paper`. Install them into the project that installs `roach`, never
-globally, so each project's skills match its own `roach`. pip cannot run code
-at install time, so link them from the project's environment:
+The package ships [Claude Code skills](roach/skill): `roach-slurm` for driving
+`roach.slurm` and `roach-paper` for making figures and tables with
+`roach.paper`. They install themselves into the project that installs `roach`,
+never globally, so each project's skills match its own `roach`:
 
-```bash
-python -m roach.skill    # <project>/.claude/skills/roach-* -> <site-packages>/roach/skill/roach-*
+```
+<project>/.claude/skills/roach-* -> <site-packages>/roach/skill/roach-*
 ```
 
-The project is the nearest parent with a `pyproject.toml`, `pixi.toml` or
-`.git`; pass a directory to override. The links are absolute, so gitignore
-`.claude/skills/roach-*`. A `.claude/skills/roach` link from before the split
-is removed.
+pip cannot run code at install time, so `import roach` does it: it reconciles
+the links with the skills the installed package ships, silently, and touches
+nothing when they are already right. The project is the nearest parent of the
+working directory with a `pyproject.toml`, `pixi.toml` or `.git`.
+`python -m roach.skill [project]` does the same by hand and prints what changed.
+
+Reconciling adds missing links and removes stale ones: a renamed or removed
+skill, a link into an old environment. A link is roach's if its target runs
+through `roach/skill/`; anything else in `.claude/skills/` is left alone, and a
+real directory in a skill's place is skipped. The links are absolute, so
+gitignore `.claude/skills/roach-*`.
 
 They are symlinks into the installed package: an editable install tracks the
 clone (`git pull` updates it), a pinned install updates when the pin is
-bumped. Re-run the command only if the environment moves. A pixi project can
-make that automatic with an activation script, which runs on every
-`pixi run` and `pixi shell`:
+bumped. To have the skills before anything has imported `roach`, add a Claude
+Code `SessionStart` hook:
 
-```toml
-[tool.pixi.activation]
-scripts = ["roach-skill.sh"]    # python -m roach.skill > /dev/null
+```json
+{"hooks": {"SessionStart": [{"hooks": [{"type": "command", "timeout": 120,
+  "command": "cd \"$CLAUDE_PROJECT_DIR\" && grep -qs roach pixi.lock pyproject.toml && pixi run python -c 'import roach'; true"}]}]}}
 ```
 
 ## roach paper
