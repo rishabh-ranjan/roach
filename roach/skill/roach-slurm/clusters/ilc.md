@@ -129,12 +129,27 @@ scontrol show res                     # name, nodes, end time
 
 ### Read the cluster, every submission
 
+`ilctop` ships with roach and reads most of this in one call:
+
+```
+pixi run ilctop --json -n    # free_gpus by type, nodes (who holds what, which are down), users, your running and pending
+pixi run ilctop --json       # the same plus live numbers for your running jobs, a few seconds slower
+```
+
+Always `--json`: without it `ilctop` draws a screen for a person, with qos
+carried by colour and names cut short. `free_gpus` leaves out nodes that are
+down, drained or reserved. `pending` has the reason and slurm's start estimate
+per job. The live call probes each of your jobs with `srun --overlap` and adds
+`cpus_used`, `mem_used_gib` and per-card `gpu_live` (utilisation, memory,
+power): a running job whose cards sit at 0% is hung or starved, which nothing
+in `squeue` shows. `gpu_live` can list cards of your other jobs on the same
+node.
+
+What `ilctop` does not report -- tier caps, time limits, reservations -- comes
+from slurm directly:
+
 ```
 sacctmgr -np show qos format=Name,Priority,MaxTRESPU,MaxWall,Preempt
-squeue -u $USER -h -o "%q %b %T" | sort | uniq -c   # what you already hold, by tier
-squeue -u $USER -o "%.8i %.30j %.14q %.9T %R"       # your pending, with reasons
-sinfo -p il -N -o "%N %G %C %t"                     # what exists, what is down
-squeue -p il -h -t RUNNING -o "%N %b" | sort | uniq -c
 scontrol show node blackwell1 | grep -E "CfgTRES|AllocTRES|State"   # b200 free = Cfg - Alloc; RESERVED = not yours
 squeue -p il -h -t RUNNING -o "%u %b %M %l %q"      # elapsed vs limit: when a card frees
 ```
