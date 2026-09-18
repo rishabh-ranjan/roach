@@ -26,7 +26,11 @@ platforms = ["linux-64"]
 roach = { path = ".", editable = true }
 
 [tool.pixi.tasks]
-test = "pytest"
+test = "pytest -m 'not slow'"
+test-all = "pytest"
+
+[tool.pytest.ini_options]
+markers = ["slow: runs the real batch script; for changes to bootstrap.sh or node.sh"]
 
 [tool.pixi.dependencies]
 python = "3.12.*"

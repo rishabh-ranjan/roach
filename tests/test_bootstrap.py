@@ -16,12 +16,14 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.slow
+
 TOOLS = {
     # `install` is the slow step a second job must not repeat, and it keeps a
     # lock it already has -- which is what makes the seeded lock observable.
     "pixi": """#!/bin/bash
 case "$1" in
-  install) sleep 1; [[ -f pixi.lock ]] || echo "lock-$(date +%s%N)" > pixi.lock ;;
+  install) sleep 0.2; [[ -f pixi.lock ]] || echo "lock-$(date +%s%N)" > pixi.lock ;;
   run) shift; while [[ $1 == --* ]]; do shift; done; exec "$@" ;;
 esac
 """,
@@ -204,11 +206,14 @@ def test_a_killed_builder_leaves_a_recoverable_clone(rig):
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    time.sleep(2)
+    clone = rig.clones / f"repo-{sha}"
+    deadline = time.monotonic() + 10
+    while not (clone / "pixi.lock").exists() and time.monotonic() < deadline:
+        time.sleep(0.05)
+    time.sleep(0.3)
     os.killpg(proc.pid, signal.SIGKILL)
     proc.wait()
 
-    clone = rig.clones / f"repo-{sha}"
     assert clone.is_dir(), "the interrupted build left nothing to recover from"
     assert not (clone / ".roach-ready").exists(), "published a half-built clone"
     assert not (clone / "built.txt").exists()
