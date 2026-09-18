@@ -1,5 +1,5 @@
 ---
-name: roach
+name: roach-slurm
 description: Slurm jobs through the roach package (github.com/rishabh-ranjan/roach) — submitting, watching, rebalancing and recovering runs on the supported clusters (ILC, and Marlowe on the human's instruction). Use whenever sbatch, squeue, srun, a sweep, a pending or preempted job, a cluster budget, or roach itself comes up.
 ---
 

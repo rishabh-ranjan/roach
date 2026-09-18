@@ -36,22 +36,24 @@ pixi run test
 Run a python function on slurm -- one job, one rank per GPU, resumable across
 preemption and the wall clock. **[roach/slurm/README.md](roach/slurm/README.md)**.
 
-## claude code skill
+## claude code skills
 
-The package ships a [Claude Code skill](roach/skill/SKILL.md) for driving
-`roach.slurm`. Install it into the project that installs `roach`, never
-globally, so each project's skill matches its own `roach`. pip cannot run code
-at install time, so link it from the project's environment:
+The package ships two [Claude Code skills](roach/skill): `roach-slurm` for
+driving `roach.slurm` and `roach-paper` for making figures and tables with
+`roach.paper`. Install them into the project that installs `roach`, never
+globally, so each project's skills match its own `roach`. pip cannot run code
+at install time, so link them from the project's environment:
 
 ```bash
-python -m roach.skill    # <project>/.claude/skills/roach -> <site-packages>/roach/skill
+python -m roach.skill    # <project>/.claude/skills/roach-* -> <site-packages>/roach/skill/roach-*
 ```
 
 The project is the nearest parent with a `pyproject.toml`, `pixi.toml` or
-`.git`; pass a directory to override. The link is absolute, so gitignore
-`.claude/skills/roach`.
+`.git`; pass a directory to override. The links are absolute, so gitignore
+`.claude/skills/roach-*`. A `.claude/skills/roach` link from before the split
+is removed.
 
-It is a symlink into the installed package: an editable install tracks the
+They are symlinks into the installed package: an editable install tracks the
 clone (`git pull` updates it), a pinned install updates when the pin is
 bumped. Re-run the command only if the environment moves. A pixi project can
 make that automatic with an activation script, which runs on every
