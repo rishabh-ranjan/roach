@@ -39,17 +39,28 @@ preemption and the wall clock. **[roach/slurm/README.md](roach/slurm/README.md)*
 ## claude code skill
 
 The package ships a [Claude Code skill](roach/skill/SKILL.md) for driving
-`roach.slurm`. pip cannot run code at install time, so link it once:
+`roach.slurm`. Install it into the project that installs `roach`, never
+globally, so each project's skill matches its own `roach`. pip cannot run code
+at install time, so link it from the project's environment:
 
 ```bash
-python -m roach.skill              # ~/.claude/skills/roach -> <site-packages>/roach/skill
-python -m roach.skill .claude      # or into one project
+python -m roach.skill    # <project>/.claude/skills/roach -> <site-packages>/roach/skill
 ```
 
-It is a symlink into the installed package, so the skill always matches the
-installed `roach`: an editable install tracks the clone (`git pull` updates
-it), a pinned install updates when the pin is bumped. Re-run the command only
-if the environment moves.
+The project is the nearest parent with a `pyproject.toml`, `pixi.toml` or
+`.git`; pass a directory to override. The link is absolute, so gitignore
+`.claude/skills/roach`.
+
+It is a symlink into the installed package: an editable install tracks the
+clone (`git pull` updates it), a pinned install updates when the pin is
+bumped. Re-run the command only if the environment moves. A pixi project can
+make that automatic with an activation script, which runs on every
+`pixi run` and `pixi shell`:
+
+```toml
+[tool.pixi.activation]
+scripts = ["roach-skill.sh"]    # python -m roach.skill > /dev/null
+```
 
 ## roach paper
 
