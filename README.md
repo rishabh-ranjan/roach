@@ -53,5 +53,25 @@ if the environment moves.
 
 ## roach paper
 
-`roach.paper`: matplotlib/seaborn defaults and save helpers for paper figures
-and tables.
+`roach.paper`: a figure design system for papers, plus save helpers for
+figures and tables. `paper.apply()` before creating figures.
+
+- **Fonts**: Inter (vendored in `roach/fonts/`, pinned so output is identical on
+  any machine); STIX math; TrueType embedding.
+- **Type scale** (print points): `LABEL_SIZE`/`TITLE_SIZE`/`LEGEND_SIZE` 7,
+  `TICK_SIZE` 6, `FINE_SIZE` 5 (never data). Emphasis via weight and darkness,
+  not size.
+- **Palette**: `CARDINAL_RED` `#8C1515`, `PALO_ALTO` `#175E54`, `COOL_GREY`
+  `#53565A`, `BLACK` `#1A1A1A`, `WHITE`. Cardinal red is reserved for the
+  paper's own method, whatever it is named: use `paper.OURS` for its curves,
+  markers and text, and the same hex for its name in LaTeX. Every other method
+  gets one fixed muted color, reused identically across figures.
+- **Chrome**: no top/right spines, no legend frames, 0.6 pt axes, 0.5 pt grid,
+  1 pt data lines.
+- **True-size saving**: generate each figure at its `\includegraphics` slot
+  width so LaTeX applies no rescaling and point sizes render at true size.
+  `save_at_width(fig, path, width_in)` pins the width and crops only
+  vertically; for content that spans the full slot (e.g. an outside legend),
+  `fit_to_width(fig, width_in, pad)` then `save_fig(fig, path, pad)`.
+  `LINEWIDTH_IN = 5.5` is `\linewidth` for NeurIPS/ICLR.
+- **Tables**: `save_tex`, `align_tex`.
