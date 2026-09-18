@@ -48,10 +48,7 @@ preemption and the wall clock. **[roach/slurm/README.md](roach/slurm/README.md)*
 `ilctop`: GPUs, CPUs and jobs on the ILC cluster at a glance -- who holds which
 card under which qos, what is free, and live utilisation of your own jobs.
 `ilctop -w` refreshes; `ilctop --json` prints the same data as records, for
-scripts and agents. Installed with the package; the file
-[roach/slurm/clusters/ilctop.py](roach/slurm/clusters/ilctop.py) is
-stdlib-only and also runs on its own, so a symlink to it from `~/.local/bin`
-gives a bare `ilctop` outside any environment.
+scripts and agents. Installed with the package: `pixi run ilctop`.
 
 ## claude code skills
 
