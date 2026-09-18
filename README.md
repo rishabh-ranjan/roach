@@ -19,7 +19,14 @@ As a dependency, pinned to a tag:
 
 ```toml
 # pyproject.toml
-dependencies = ["roach @ git+https://github.com/rishabh-ranjan/roach@v0.1.1"]
+dependencies = ["roach @ git+https://github.com/rishabh-ranjan/roach@v0.5.4"]
+```
+
+Then link the [Claude Code skills](#claude-code-skills) into the project, once:
+
+```bash
+pixi run python -m roach.skill
+git add .claude/skills && git commit -m "claude: roach skills"
 ```
 
 For development:
