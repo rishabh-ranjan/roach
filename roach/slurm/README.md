@@ -220,12 +220,17 @@ cluster's on every node.
 
 ## Tests
 
-`pixi run test`. They cover the pure functions -- target resolution, the
-argument check, resource shapes, the placeholders the script and `submit()` must
-agree on, and the two environment flags that mean opposite things at their two
-layers (`--export=NONE` keeps the submitting shell out of the job;
-`srun --export=ALL` lets the job's own environment reach its tasks) -- and the
-clone protocol, run against fake `pixi`/`srun` without slurm.
+`pixi run test` is the fast set, under a second: what would go wrong silently
+or only on the compute node -- the placeholders the script and `submit()` must
+agree on, resource flags that change a job's shape without an error, and the
+two environment flags that mean opposite things at their two layers
+(`--export=NONE` keeps the submitting shell out of the job;
+`srun --export=ALL` lets the job's own environment reach its tasks). A mistake
+`sbatch` or `submit()` rejects out loud is not tested.
+
+`pixi run test-all` adds the clone protocol, run against fake `pixi`/`srun`
+without slurm (marked `slow`, a few seconds). Run it after touching
+`bootstrap.sh` or `node.sh`.
 
 ## Versions
 
