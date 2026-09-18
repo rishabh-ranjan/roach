@@ -36,6 +36,21 @@ pixi run test
 Run a python function on slurm -- one job, one rank per GPU, resumable across
 preemption and the wall clock. **[roach/slurm/README.md](roach/slurm/README.md)**.
 
+## claude code skill
+
+The package ships a [Claude Code skill](roach/skill/SKILL.md) for driving
+`roach.slurm`. pip cannot run code at install time, so link it once:
+
+```bash
+python -m roach.skill              # ~/.claude/skills/roach -> <site-packages>/roach/skill
+python -m roach.skill .claude      # or into one project
+```
+
+It is a symlink into the installed package, so the skill always matches the
+installed `roach`: an editable install tracks the clone (`git pull` updates
+it), a pinned install updates when the pin is bumped. Re-run the command only
+if the environment moves.
+
 ## roach paper
 
 `roach.paper`: matplotlib/seaborn defaults and save helpers for paper figures
