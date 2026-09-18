@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 120,
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && pixi run python -c 'import roach'; true"
+          }
+        ]
+      }
+    ]
+  }
+}

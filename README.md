@@ -61,13 +61,20 @@ gitignore `.claude/skills/roach-*`.
 
 They are symlinks into the installed package: an editable install tracks the
 clone (`git pull` updates it), a pinned install updates when the pin is
-bumped. To have the skills before anything has imported `roach`, add a Claude
-Code `SessionStart` hook:
+bumped.
 
-```json
-{"hooks": {"SessionStart": [{"hooks": [{"type": "command", "timeout": 120,
-  "command": "cd \"$CLAUDE_PROJECT_DIR\" && grep -qs roach pixi.lock pyproject.toml && pixi run python -c 'import roach'; true"}]}]}}
+A fresh clone has no links until something imports `roach`. To have the skills
+from the first Claude Code session, run this once per project and commit
+`.claude/settings.json`:
+
+```bash
+python -m roach.skill --hook
 ```
+
+It adds a `SessionStart` hook that imports `roach` in the project's
+environment (`pixi run`, `uv run` or plain `python`, by which lock file the
+project has), so every collaborator gets it with the clone. Keep it in the
+project, not in a user's global settings.
 
 ## roach paper
 

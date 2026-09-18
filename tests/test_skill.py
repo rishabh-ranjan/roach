@@ -1,9 +1,10 @@
+import json
 import os
 import re
 
 import pytest
 
-from roach.skill import SRC, reconcile
+from roach.skill import SRC, hook, reconcile
 
 SKILLS = sorted(d for d in SRC.iterdir() if (d / "SKILL.md").exists())
 
@@ -47,3 +48,18 @@ def test_reconcile(tmp_path):
     for skill in SKILLS:
         assert os.readlink(skills / skill.name) == str(skill)
     assert reconcile(tmp_path) == []
+
+
+def test_hook(tmp_path):
+    (tmp_path / "uv.lock").touch()
+    path = tmp_path / ".claude" / "settings.json"
+    path.parent.mkdir()
+    path.write_text(json.dumps({"model": "x", "hooks": {"Stop": []}}))
+
+    assert hook(tmp_path)
+
+    settings = json.loads(path.read_text())
+    assert settings["model"] == "x" and settings["hooks"]["Stop"] == []
+    (entry,) = settings["hooks"]["SessionStart"]
+    assert "uv run python -c 'import roach'" in entry["hooks"][0]["command"]
+    assert hook(tmp_path) == []

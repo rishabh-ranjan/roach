@@ -1,3 +1,4 @@
+import json
 import os
 from pathlib import Path
 
@@ -42,3 +43,24 @@ def reconcile(root=None):
         dst.symlink_to(src)
         log.append(f"{dst} -> {src}")
     return log
+
+
+RUNNERS = (("pixi.lock", "pixi run "), ("pixi.toml", "pixi run "), ("uv.lock", "uv run "))
+IMPORT = "python -c 'import roach'"
+
+
+def hook(root=None):
+    root = Path(root) if root is not None else project_root()
+    if root is None:
+        return []
+    runner = next((r for f, r in RUNNERS if (root / f).exists()), "")
+    path = root / ".claude" / "settings.json"
+    settings = json.loads(path.read_text()) if path.exists() else {}
+    start = settings.setdefault("hooks", {}).setdefault("SessionStart", [])
+    if any(IMPORT in h.get("command", "") for e in start for h in e.get("hooks", [])):
+        return []
+    command = f'cd "$CLAUDE_PROJECT_DIR" && {runner}{IMPORT}; true'
+    start.append({"hooks": [{"type": "command", "timeout": 120, "command": command}]})
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(settings, indent=2) + "\n")
+    return [f"{path}: SessionStart runs {runner}{IMPORT}"]
