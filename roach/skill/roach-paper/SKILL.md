@@ -65,7 +65,8 @@ STIX. Do not substitute Helvetica or Arial.
 
 ## 4. Chrome
 
-No top or right spines, no legend frames, no grid unless it carries reading
+No top or right spines, axis lines and tick marks in `paper.AXIS_GREY` (tick
+labels stay black), no legend frames, no grid unless it carries reading
 value (then 0.5 pt). Data lines 0.75 to 1 pt. `apply()` sets all of these;
 do not override them per figure.
 

@@ -19,7 +19,7 @@ As a dependency, pinned to a tag:
 
 ```toml
 # pyproject.toml
-dependencies = ["roach @ git+https://github.com/rishabh-ranjan/roach@v0.5.5"]
+dependencies = ["roach @ git+https://github.com/rishabh-ranjan/roach@v0.5.6"]
 ```
 
 Then link the [Claude Code skills](#claude-code-skills) into the project, once:

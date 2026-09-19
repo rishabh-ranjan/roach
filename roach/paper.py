@@ -10,6 +10,7 @@ LINEWIDTH_IN = 5.5
 CARDINAL_RED = "#8C1515"
 PALO_ALTO = "#175E54"
 COOL_GREY = "#53565A"
+AXIS_GREY = "#7E8083"
 BLACK = "#1A1A1A"
 WHITE = "#FFFFFF"
 
@@ -44,6 +45,11 @@ def apply():
             "axes.spines.top": False,
             "axes.spines.right": False,
             "axes.linewidth": 0.6,
+            "axes.edgecolor": AXIS_GREY,
+            "xtick.color": AXIS_GREY,
+            "ytick.color": AXIS_GREY,
+            "xtick.labelcolor": "black",
+            "ytick.labelcolor": "black",
             "grid.linewidth": 0.5,
             "lines.linewidth": 1.0,
         }
