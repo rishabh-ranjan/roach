@@ -1,21 +1,25 @@
 ---
 name: roach-overleaf
-description: Writing a paper with collaborators on Overleaf from a local git clone, through Overleaf's git bridge — setting up the overleaf remote, the pull-build-push routine, merge conflicts with web-editor edits, and source conventions that keep merges clean. Use whenever Overleaf, git.overleaf.com, syncing a paper, a collaborator's edits to the .tex, or pushing paper changes comes up, and before and after any edit to the paper sources of a project that has an `overleaf` remote.
+description: Writing a paper with collaborators on Overleaf from a local git clone, through Overleaf's git bridge — setting up the overleaf remote (Overleaf as the one upstream, GitHub as its mirror), the pull-build-push routine, merge conflicts with web-editor edits, and source conventions that keep merges clean. Use whenever Overleaf, git.overleaf.com, syncing a paper, a collaborator's edits to the .tex, or pushing paper changes comes up, and before and after any edit to the paper sources of a project that has an `overleaf` remote.
 ---
 
 # roach overleaf
 
 Every Overleaf project is a git repository at
 `https://git.overleaf.com/<project-id>`. Collaborators write in the web editor;
-you write in a local clone; git carries both. Overleaf is one more remote, not
-a place anything is copied to by hand. This needs Overleaf premium on the
-project owner's account (most universities provide it).
+you write in a local clone; git carries both. This needs Overleaf premium on
+the project owner's account (most universities provide it).
 
-Do not use Overleaf's GitHub sync on the same project. It is a manual button
-in each direction, and on divergence it dumps Overleaf's side into an
-`overleaf-<date>` branch for someone to merge later. If the project already
-uses it, stop pressing the button once the bridge is set up; the GitHub remote
-stays, fed from the local clone.
+**Overleaf is the one remote anyone writes to.** Local `main` tracks
+`overleaf/main`, so a plain `git pull` and `git push` talk to Overleaf.
+GitHub is a mirror: the same push also lands there, as a second push URL of
+the `overleaf` remote, and nothing else ever writes to it. One writable
+remote cannot diverge from itself; a mirror can only lag.
+
+So nobody pushes to GitHub directly, and nobody uses Overleaf's GitHub sync
+button. The button is not merely redundant: on any divergence it pushes a
+snapshot to GitHub as an `overleaf-<date>` branch, and it flattens symlinks
+into text files, so merging such a branch breaks every committed skill link.
 
 ## 1. Set up, once per clone
 
@@ -72,19 +76,31 @@ git config credential.https://git.overleaf.com.helper \
   '!f() { test "$1" = get && echo "password=$(cat <token-file>)"; }; f'
 git fetch overleaf
 git ls-remote --heads overleaf
+
+git remote set-url --add --push overleaf https://git.overleaf.com/<project-id>
+git remote set-url --add --push overleaf "$(git remote get-url origin)"
+git branch --set-upstream-to=overleaf/main main
+git config remote.pushDefault overleaf
+git config pull.rebase false
 ```
+
+The last five lines make Overleaf the clone's upstream and GitHub its mirror:
+`git pull` merges from Overleaf, `git push` sends `main` to Overleaf and then
+to GitHub. `origin` stays as a read-only name for GitHub. With no GitHub repo,
+skip the two `set-url` lines.
 
 The helper reads the file on each fetch and push, so nothing ever prompts and
 rotating the token is rewriting one file. A 403 is a wrong or expired token,
 or an account without access to the project; a 404 is a wrong id. `ls-remote`
 names Overleaf's branch: `main` on current projects, `master` on old ones.
-Below it is written `main`.
+Below it is written `main`. (On a `master` project the names differ, so
+leave out the GitHub push URL and `pushDefault`; push with `git push overleaf
+HEAD:master` and mirror with `git push origin main`.)
 
 **6. Shared history?** `git merge-base main overleaf/main`.
 
 - It prints a commit: someone already joined this project to its repo, and
-  you are joining them. `git merge --no-edit overleaf/main`, build, and go to
-  step 7. This is the usual case for everyone after the first person.
+  you are joining them. `git pull`, build, and go to step 7. This is the usual case for everyone after the first person.
 - It prints nothing: you are the first. Join the histories as in "First join"
   below, then record in the project's `CLAUDE.md` only what is the project's
   own: that it syncs with Overleaf by this skill, the build command,
@@ -94,19 +110,19 @@ Below it is written `main`.
   pull && pixi install`, then invoke it". Do not copy the routine there; it
   lives here.
 
-**7. Prove both directions.** `git push --dry-run overleaf HEAD:main` proves
-write access without changing anything. If the merge or the build left
-commits to push, push them for real by section 2.
+**7. Prove both directions.** `git push --dry-run` proves write access to
+Overleaf and to the mirror without changing anything. If the merge or the
+build left commits to push, push them for real by section 2.
 
-**8. Retire the GitHub sync button.** Tell the human, in these words or
-better: from now on nobody presses "GitHub" sync in the Overleaf menu. It is
-not merely redundant. On any divergence it pushes a snapshot to GitHub as an
-`overleaf-<date>` branch, and it flattens symlinks into text files, so
-merging such a branch with GitHub's button breaks every committed skill link.
-For each `origin/overleaf-*` branch that exists: if `git diff <branch> main --
-'*.tex' '*.bib'` is empty, or shows only lines where `main` is newer, its
-sources are already in `main`: `git merge -s ours <branch>`, push, delete the
-branch. Otherwise take the source changes by hand, never the flattened links.
+**8. Retire the old paths.** Tell the human, in these words or better: from
+now on nobody presses "GitHub" sync in the Overleaf menu and nobody pushes to
+GitHub directly; `git pull` and `git push` are all there is. Then clear what
+the old paths left behind. `git fetch origin`: if `git log main..origin/main`
+shows commits, someone wrote to GitHub; `git merge origin/main` once. For
+each `origin/overleaf-*` branch: if `git diff <branch> main -- '*.tex'
+'*.bib'` is empty, or shows only lines where `main` is newer, its sources are
+already in `main`: `git merge -s ours <branch>`, push, delete the branch.
+Otherwise take the source changes by hand, never the flattened links.
 
 **9. Who pushes.** Ask the human one question: should you sync on your own
 after each change, or only when they say so? Record the answer in this clone,
@@ -116,24 +132,12 @@ where it binds every later session and nobody else's clone:
 git config overleaf.sync auto      # or: manual
 ```
 
-Then make sure the routine exists as project tasks, for the human's own
-shell. The first person adds them to `pixi.toml`, with Overleaf's branch name
-filled in, and commits; everyone after finds them there:
-
-```toml
-pull = "git fetch overleaf && git merge --no-edit overleaf/main && git fetch origin && git merge --no-edit origin/main"
-push = "pixi run pull && pixi run compile && git push overleaf HEAD:main && git push origin HEAD"
-```
-
-Tell the human what they are for. A plain `git push` goes to GitHub only:
-nothing appears in the Overleaf editor until someone also pushes to
-`overleaf`, and a direct `git push overleaf HEAD:main` is refused whenever a
-collaborator has typed since the last merge. `pixi run push` merges both
-remotes, builds, and pushes to both, stopping at the first failure (a
-conflict, a broken build, a clone with no `overleaf` remote yet) with nothing
-pushed; within seconds the web editor shows the edits, and open editors
-update in place. `pixi run pull` is the first half alone. Neither commits
-anything: uncommitted work stays local.
+Tell the human what their own shell now does. `git pull` brings in what
+collaborators typed. `git push` puts their commits in the Overleaf editor
+within seconds, open editors updating in place, and mirrors them to GitHub.
+Overleaf refuses a push whenever someone has typed since the last pull: `git
+pull`, then push again. Nothing builds for them: a push that does not compile
+breaks the editor for everyone, so they build first.
 
 **10. Report** to the human: the clone's branch, that fetch and push work,
 what the first merge brought in, and which sync mode is set and how to change
@@ -170,20 +174,18 @@ Then build and push. From here on every merge is ordinary.
 
 - **`auto`**: you run it unasked, as written below.
 - **`manual`**: the human owns every exchange with a remote. You edit, build
-  and commit locally; you never merge from or push to `overleaf` or `origin`
-  on your own, not even when a push is plainly due. `git fetch` changes
-  nothing and stays allowed: fetch before editing, and if `git log
-  main..overleaf/main` shows commits, say so and say what they touch, since
-  the human may want them merged before you edit the same lines. When the
-  human says to sync, pull or push, run the routine below in full, once: a
-  bare push without the fetch, merge and build is not on offer, because
-  Overleaf rejects it or collaborators get a broken build. Afterwards say
-  what came in and what went out. Do not nudge the human to switch modes.
+  and commit locally; you never pull or push on your own, not even when a
+  push is plainly due. `git fetch` changes nothing and stays allowed: fetch
+  before editing, and if `git log main..overleaf/main` shows commits, say so
+  and say what they touch, since the human may want them pulled before you
+  edit the same lines. When the human says to sync, pull or push, run the
+  routine below in full, once, and say what came in and what went out. Do not
+  nudge the human to switch modes.
 
 Before touching any paper source:
 
 ```bash
-git fetch overleaf && git merge --no-edit overleaf/main
+git pull
 ```
 
 After each logical change, not at the end of the session:
@@ -191,22 +193,23 @@ After each logical change, not at the end of the session:
 ```bash
 <build>                                  # the project's latexmk task; it must pass
 git commit -am "<what changed>"
-git fetch overleaf && git merge --no-edit overleaf/main
-git push overleaf HEAD:main
-git push origin HEAD                     # if there is a GitHub remote too
+git pull
+git push
 ```
 
-With a GitHub remote that other people also push to (a collaborator's own
-clone, or someone still pressing Overleaf's GitHub sync button), fetch and
-merge `origin/main` in the same two places as `overleaf/main`.
+`git push` reports two destinations. If Overleaf refuses and GitHub accepts,
+the mirror is briefly ahead; the pull and push that follow put it right. If
+GitHub refuses, someone wrote to it directly: `git fetch origin && git merge
+origin/main`, push, and tell the human the rule was broken.
 
-- **Merge, do not rebase.** The branch also lives on GitHub; rebasing onto
-  Overleaf rewrites commits already pushed there.
+- **Merge, do not rebase.** Commits already on the mirror or in someone
+  else's clone must not be rewritten; `pull.rebase false` keeps `git pull` a
+  merge.
 - **Small and often.** Overleaf commits web edits into its branch continuously.
   A local branch that drifts for a day is the only source of real conflicts;
   a push every few minutes of work almost never conflicts.
-- **A rejected push** means someone typed in between: fetch, merge, build,
-  push again. Never force.
+- **A rejected push** means someone typed in between: pull, build, push
+  again. Never force.
 - **Build before pushing.** Collaborators compile the pushed sources in the browser the
   moment it lands; a broken push breaks their editor.
 - **Build again after a merge that brought in `.tex` changes**, before
