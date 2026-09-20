@@ -116,25 +116,24 @@ where it binds every later session and nobody else's clone:
 git config overleaf.sync auto      # or: manual
 ```
 
-Then give the human the routine as one command of their own, for the shell,
-with the project's build and Overleaf's branch name filled in:
+Then make sure the routine exists as project tasks, for the human's own
+shell. The first person adds them to `pixi.toml`, with Overleaf's branch name
+filled in, and commits; everyone after finds them there:
 
-```bash
-git config alias.sync '!f() { set -e; cd "$(git rev-parse --show-toplevel)"
-  git fetch overleaf; git merge --no-edit overleaf/main
-  git fetch origin;   git merge --no-edit origin/main
-  <build>
-  git push overleaf HEAD:main; git push origin HEAD; }; f'
+```toml
+pull = "git fetch overleaf && git merge --no-edit overleaf/main && git fetch origin && git merge --no-edit origin/main"
+push = "pixi run pull && pixi run compile && git push overleaf HEAD:main && git push origin HEAD"
 ```
 
-Tell them what it is for. A plain `git push` goes to GitHub only: nothing
-appears in the Overleaf editor until someone also pushes to `overleaf`, and
-a direct `git push overleaf HEAD:main` is refused whenever a collaborator has
-typed since the last merge. `git sync` merges both remotes, builds, and
-pushes to both, stopping at the first failure (a conflict, a broken build)
-with nothing pushed. Within seconds of it finishing, the web editor shows
-the edits, and open editors update in place. It commits nothing: uncommitted
-work stays local.
+Tell the human what they are for. A plain `git push` goes to GitHub only:
+nothing appears in the Overleaf editor until someone also pushes to
+`overleaf`, and a direct `git push overleaf HEAD:main` is refused whenever a
+collaborator has typed since the last merge. `pixi run push` merges both
+remotes, builds, and pushes to both, stopping at the first failure (a
+conflict, a broken build, a clone with no `overleaf` remote yet) with nothing
+pushed; within seconds the web editor shows the edits, and open editors
+update in place. `pixi run pull` is the first half alone. Neither commits
+anything: uncommitted work, the rebuilt PDF included, stays local.
 
 **10. Report** to the human: the clone's branch, that fetch and push work,
 what the first merge brought in, and which sync mode is set and how to change
