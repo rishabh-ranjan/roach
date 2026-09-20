@@ -1,6 +1,6 @@
 ---
 name: roach-overleaf
-description: Writing a paper with collaborators on Overleaf from a local git clone, through Overleaf's git bridge — setting up the overleaf remote (Overleaf as the one upstream, GitHub as its mirror), the pull-commit-push routine, merge conflicts with web-editor edits, and source conventions that keep merges clean. Use whenever Overleaf, git.overleaf.com, syncing a paper, a collaborator's edits to the .tex, or pushing paper changes comes up, and before and after any edit to the paper sources of a project that has an `overleaf` remote.
+description: Writing a paper with collaborators on Overleaf from a local git clone, through Overleaf's git bridge — setting up the overleaf remote (Overleaf as the one upstream, GitHub as its mirror), the pull-build-push routine, merge conflicts with web-editor edits, and source conventions that keep merges clean. Use whenever Overleaf, git.overleaf.com, syncing a paper, a collaborator's edits to the .tex, or pushing paper changes comes up, and before and after any edit to the paper sources of a project that has an `overleaf` remote.
 ---
 
 # roach overleaf
@@ -24,12 +24,12 @@ symlinks into text files, which breaks every committed skill link if merged.
 
 ```bash
 git pull                                      # before touching any paper source
-git commit -am "<what changed>" && git push   # after each logical change
+<build>                                       # after each logical change; it must pass
+git commit -am "<what changed>" && git push
 ```
 
-That is all of it. Overleaf compiles; you do not. Build locally only when the
-human asks, or when you need to see the PDF yourself (a figure's placement, a
-page count).
+That is all of it. `<build>` is the project's compile command, named in its
+`CLAUDE.md`.
 
 - **`git config overleaf.sync`** says who runs it. `auto`: you do, unasked.
   `manual` or unset: the human owns every pull and push, and you never run
@@ -44,11 +44,11 @@ page count).
 - **Read what a pull brought in** when it touched the file you are about to
   edit (`git log -p ORIG_HEAD..HEAD -- <file>`): it is the context for what
   you write next.
-- **Be careful instead of compiling.** A push that does not compile breaks
-  the editor for everyone, and Overleaf shows the error at once. Balance
-  every brace and environment you touch, define every macro and label you
-  use, and commit any file you `\input` or `\includegraphics`. If a
-  collaborator reports a broken build after your push, fix it first.
+- **Build before you push.** Collaborators compile the pushed sources in the
+  browser the moment they land; a broken push breaks the editor for everyone.
+  Build again when a pull that followed a refused push brought in `.tex`
+  changes. This binds you, not the human: what they push from their own shell
+  is their call.
 - `git push` reports two destinations. If GitHub refuses, someone wrote to it
   directly: `git fetch origin && git merge origin/main && git push`, and tell
   the human the rule was broken.
@@ -90,11 +90,17 @@ GitHub, the fresh clone's `origin`). A local branch with commits `main` lacks
 is merged into `main` and deleted; uncommitted work is committed. There is no
 personal or staging branch between the clone and Overleaf.
 
-**2. The project id**, the hex string in `overleaf.com/project/<id>`. The
+**2. The build.** Run the project's install and its compile command. LaTeX
+is not in the pixi env: if `latexmk` is not on `PATH`, the human installs a
+TeX distribution (MacTeX on a Mac, TinyTeX or TeX Live elsewhere); a missing
+`.sty` is `tlmgr install <pkg>`. In a clone set to `manual` whose human never
+wants you to push, this step can wait until they do.
+
+**3. The project id**, the hex string in `overleaf.com/project/<id>`. The
 project's `CLAUDE.md` records it; otherwise the human reads it off their
 browser.
 
-**3. The token.** The human creates one: Overleaf, Account Settings, Git
+**4. The token.** The human creates one: Overleaf, Account Settings, Git
 Integration, "Create token". It is theirs, one per account, good for all
 their projects; never shared, and the account password is never asked for.
 It goes in a file outside every repo, mode 600, holding the bare token: where
@@ -109,7 +115,7 @@ printf '%s' '<token>' > ~/.config/overleaf/token && chmod 600 ~/.config/overleaf
 If they paste it to you instead, write that file yourself and never repeat
 the token, in a reply, a commit, a remote URL or a file in the repo.
 
-**4. The remote.**
+**5. The remote.**
 
 ```bash
 git remote add overleaf https://git.overleaf.com/<project-id>
@@ -133,29 +139,29 @@ skip the two `set-url` lines. An old project whose Overleaf branch is
 `pushDefault`, push with `git push overleaf HEAD:master`, mirror with `git
 push origin main`.
 
-**5. Shared history?** `git merge-base main overleaf/main`.
+**6. Shared history?** `git merge-base main overleaf/main`.
 
 - It prints a commit: the project is already joined. `git pull`. The usual
   case for everyone after the first person.
 - It prints nothing: you are the first. Do "First join" below, then record in
   the project's `CLAUDE.md` only what is the project's own: that it syncs by
-  this skill, the project id, and a bootstrap line for the next person, since
+  this skill, the compile command, the project id, and a bootstrap line for the next person, since
   the skill cannot load in a clone that has not installed yet: "if the
   `roach-overleaf` skill is missing, `git switch main && git pull && pixi
   install`, then invoke it". The routine is not copied there.
 
-**6. Old paths.** `git fetch origin`. If `git log main..origin/main` shows
+**7. Old paths.** `git fetch origin`. If `git log main..origin/main` shows
 commits, someone wrote to GitHub: `git merge origin/main` once. For each
 `origin/overleaf-*` branch: if `git diff <branch> main -- '*.tex' '*.bib'` is
 empty or shows only lines where `main` is newer, `git merge -s ours <branch>`
 and delete the branch; otherwise take its source changes by hand, never the
 flattened links.
 
-**7. Who syncs.** Ask the human one question: should you pull and push on
+**8. Who syncs.** Ask the human one question: should you pull and push on
 your own, or only when they say so? `git config overleaf.sync auto` or
 `manual`. It binds this clone only.
 
-**8. Finish.** `git push` (with nothing to send it still proves write access
+**9. Finish.** `git push` (with nothing to send it still proves write access
 to both). Tell the human: the sync mode and how to change it; that `git pull`
 brings in what collaborators typed and `git push` puts their commits in the
 Overleaf editor within seconds and mirrors them to GitHub; that a refused
