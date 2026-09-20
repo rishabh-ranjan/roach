@@ -84,27 +84,28 @@ printf '%s' '<token>' > ~/.config/overleaf/token && chmod 600 ~/.config/overleaf
 ```
 
 If they paste it to you instead, write that file yourself and never repeat
-the token, in a reply, a commit, a remote URL or a file in the repo.
+the token, in a reply, a commit, a remote URL or a file in the repo. Then
+teach git to use it, once per machine:
+
+```bash
+git config --global credential.https://git.overleaf.com.username git
+git config --global credential.https://git.overleaf.com.helper \
+  '!f() { test "$1" = get && echo "password=$(cat <token-file>)"; }; f'
+```
 
 **The clone.** The project id is the hex string in
 `overleaf.com/project/<id>`.
 
 ```bash
-git clone \
-  -c credential.https://git.overleaf.com.username=git \
-  -c 'credential.https://git.overleaf.com.helper=!f() { test "$1" = get && echo "password=$(cat <token-file>)"; }; f' \
-  -c pull.rebase=false \
-  https://git.overleaf.com/<project-id> <dir>
-cd <dir> && pixi install
+git clone https://git.overleaf.com/<project-id> <dir>
 ```
 
-`-c` on `clone` writes the settings into the new clone's own config and uses
-them for the clone itself, so nothing prompts, then or later, and rotating
-the token is rewriting one file. A 403 is a wrong or expired token, or an
-account without access; a 404 is a wrong id. `pixi install` makes the
-committed skill links resolve.
+Nothing prompts, then or later, and rotating the token is rewriting one file.
+A 403 is a wrong or expired token, or an account without access; a 404 is a
+wrong id.
 
-**Then**, in the clone: `pixi run compile` once (LaTeX is not in the pixi
+**Then**, in the clone: `git config pull.rebase false`, `pixi install` (it
+makes the committed skill links resolve), and `pixi run compile` once (LaTeX is not in the pixi
 env: if `latexmk` is missing the human installs MacTeX, TinyTeX or TeX Live;
 a missing `.sty` is `tlmgr install <pkg>`). Ask the human one question:
 should you pull and push on your own, or only when they say so? `git config
