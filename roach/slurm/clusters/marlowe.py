@@ -4,6 +4,12 @@ qos `normal` / `medium`, accounts `marlowe-m000137` / `marlowe-m000137-pm06`.
 Every node is the same: 8 x H100-80G, 112 cores, 1950000M. The presets are
 the two ways a job gets there; which to spend is the human's instruction,
 never a default (see the roach skill).
+
+Multi-rank jobs must pass `setup=("pixi install",)`: clones live on the NFS
+home, where pixi's env-build lock does not serialize, so ranks racing the
+first `pixi run` at a fresh clone die on a half-built environment
+("Failed to update PyPI packages"). The prepare step builds it once.
+n26 lacks libnvJitLink.so.13 (torch import fails there); exclude it.
 """
 
 from pathlib import Path
