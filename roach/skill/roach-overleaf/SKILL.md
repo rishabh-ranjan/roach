@@ -108,9 +108,17 @@ For each `origin/overleaf-*` branch that exists: if `git diff <branch> main --
 sources are already in `main`: `git merge -s ours <branch>`, push, delete the
 branch. Otherwise take the source changes by hand, never the flattened links.
 
-**9. Report** to the human: the clone's branch, that fetch and push work,
-what the first merge brought in, and that from here on you sync by section 2
-without being asked.
+**9. Who pushes.** Ask the human one question: should you sync on your own
+after each change, or only when they say so? Record the answer in this clone,
+where it binds every later session and nobody else's clone:
+
+```bash
+git config overleaf.sync auto      # or: manual
+```
+
+**10. Report** to the human: the clone's branch, that fetch and push work,
+what the first merge brought in, and which sync mode is set and how to change
+it.
 
 ### First join
 
@@ -138,6 +146,20 @@ git rev-list main | while read c; do
 Then build and push. From here on every merge is ordinary.
 
 ## 2. The routine
+
+`git config overleaf.sync` decides who runs it. Unset counts as `manual`.
+
+- **`auto`**: you run it unasked, as written below.
+- **`manual`**: the human owns every exchange with a remote. You edit, build
+  and commit locally; you never merge from or push to `overleaf` or `origin`
+  on your own, not even when a push is plainly due. `git fetch` changes
+  nothing and stays allowed: fetch before editing, and if `git log
+  main..overleaf/main` shows commits, say so and say what they touch, since
+  the human may want them merged before you edit the same lines. When the
+  human says to sync, pull or push, run the routine below in full, once: a
+  bare push without the fetch, merge and build is not on offer, because
+  Overleaf rejects it or collaborators get a broken build. Afterwards say
+  what came in and what went out. Do not nudge the human to switch modes.
 
 Before touching any paper source:
 
