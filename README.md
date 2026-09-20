@@ -53,8 +53,9 @@ scripts and agents. Installed with the package: `pixi run ilctop`.
 ## claude code skills
 
 The package ships [Claude Code skills](roach/skill): `roach-slurm` for driving
-`roach.slurm` and `roach-paper` for making figures and tables with
-`roach.paper`. Nothing installs them for you: each person
+`roach.slurm`, `roach-paper` for making figures and tables with
+`roach.paper`, and `roach-overleaf` for the pull-build-push habit in a clone of
+an Overleaf project. Nothing installs them for you: each person
 links them into their own clone, by hand, if they want Claude to use them
 there. They are never installed globally, so each clone's skills match its own
 `roach`, and never committed, so a collaborator who has not asked for them
