@@ -68,8 +68,9 @@ git rev-list main | while read c; do
 
 Then build and push. From here on every merge is ordinary.
 
-Write the routine of section 2, with the project's build command filled in,
-into the project's `CLAUDE.md`, so every session follows it.
+In the project's `CLAUDE.md`, record only what is the project's own: that it
+syncs with Overleaf by this skill, the build command, and Overleaf's branch
+name. Do not copy the routine there; it lives here.
 
 ## 2. The routine
 
