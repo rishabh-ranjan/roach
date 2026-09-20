@@ -35,9 +35,12 @@ The first fetch prompts for the password: the human pastes the token, by
 running the fetch themselves (`! git fetch overleaf`). `store` keeps it in
 `~/.git-credentials`, outside the repo. After that nothing prompts.
 
-Overleaf has one branch, `master`. It takes no force pushes and no other
-branches. The local working branch, whatever its name, pushes to it as
-`HEAD:master`.
+Overleaf has one branch, `master`, and takes no force pushes and no other
+branches. Mirror that locally: one branch, `main`, the same history on GitHub
+and on Overleaf, pushed as `HEAD:master`. No personal or staging branch sits
+between the clone and Overleaf; a second long-lived branch is exactly the
+drift this workflow exists to remove. Short-lived worktree branches push
+straight to both remotes and are deleted.
 
 If the local repo and the Overleaf project have unrelated histories (the
 project was started in the web editor and the repo elsewhere), merge once with
