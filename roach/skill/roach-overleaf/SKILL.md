@@ -24,12 +24,12 @@ symlinks into text files, which breaks every committed skill link if merged.
 
 ```bash
 git pull                                      # before touching any paper source
-<build>                                       # after each logical change; it must pass
+pixi run compile                              # after each logical change; it must pass
 git commit -am "<what changed>" && git push
 ```
 
-That is all of it. `<build>` is the project's compile command, named in its
-`CLAUDE.md`.
+That is all of it. Every project names its build task `compile`, so the
+routine reads the same everywhere and no project has to restate it.
 
 - **`git config overleaf.sync`** says who runs it. `auto`: you do, unasked.
   `manual` or unset: the human owns every pull and push, and you never run
@@ -90,7 +90,8 @@ GitHub, the fresh clone's `origin`). A local branch with commits `main` lacks
 is merged into `main` and deleted; uncommitted work is committed. There is no
 personal or staging branch between the clone and Overleaf.
 
-**2. The build.** Run the project's install and its compile command. LaTeX
+**2. The build.** `pixi install && pixi run compile`. The first person adds
+the `compile` task to `pixi.toml` if the project lacks one. LaTeX
 is not in the pixi env: if `latexmk` is not on `PATH`, the human installs a
 TeX distribution (MacTeX on a Mac, TinyTeX or TeX Live elsewhere); a missing
 `.sty` is `tlmgr install <pkg>`. In a clone set to `manual` whose human never
@@ -145,7 +146,7 @@ push origin main`.
   case for everyone after the first person.
 - It prints nothing: you are the first. Do "First join" below, then record in
   the project's `CLAUDE.md` only what is the project's own: that it syncs by
-  this skill, the compile command, the project id, and a bootstrap line for the next person, since
+  this skill, the project id, and a bootstrap line for the next person, since
   the skill cannot load in a clone that has not installed yet: "if the
   `roach-overleaf` skill is missing, `git switch main && git pull && pixi
   install`, then invoke it". The routine is not copied there.
