@@ -9,7 +9,7 @@ Every Overleaf project is a git repository at
 `https://git.overleaf.com/<project-id>`. Collaborators write in the web editor;
 you write in a local clone; git carries both. Overleaf is one more remote, not
 a place anything is copied to by hand. This needs Overleaf premium on the
-project owner's account (Stanford provides it).
+project owner's account (most universities provide it).
 
 Do not use Overleaf's GitHub sync on the same project. It is a manual button
 in each direction, and on divergence it dumps Overleaf's side into an
@@ -19,10 +19,51 @@ stays, fed from the local clone.
 
 ## 1. Set up, once per clone
 
-The human supplies two things: the project id (the hex string in the project
-URL, `overleaf.com/project/<id>`) and a git token (Overleaf Account Settings,
-Git Integration). Never ask for their password, and never write the token
-into a remote URL, a file in the repo, or a commit.
+The remote and its credentials live in `.git/config`, which git never shares,
+so every clone is set up once, by whoever works in it. When this skill is
+invoked in a clone where `git remote get-url overleaf` fails, or where `git
+fetch overleaf` does not succeed, run this section top to bottom, doing each
+step yourself and stopping only where it says the human acts. It is safe to
+re-run: every step first checks whether it is already done.
+
+**1. One branch, current.** `git switch main && git pull`. Overleaf has one
+branch and takes no force pushes and no other branches; mirror that locally:
+one `main`, the same history on GitHub and on Overleaf. No personal or staging
+branch sits between the clone and Overleaf; a second long-lived branch is
+exactly the drift this workflow exists to remove. A local branch with commits
+`main` lacks (`git log main..<branch>`) is merged into `main` now, then
+deleted, locally and on GitHub. Uncommitted work is committed first.
+Short-lived worktree branches push straight to both remotes and are deleted.
+
+**2. The environment builds.** Run the project's install (`pixi install`) and
+its build (`CLAUDE.md` names it, usually `pixi run compile`). LaTeX is not in
+the pixi env: if `latexmk` is not on `PATH`, the human installs a TeX
+distribution (MacTeX on a Mac, TinyTeX or TeX Live elsewhere) and you add its
+`bin` directory to `PATH`. A missing `.sty` is `tlmgr install <pkg>`. Do not
+go on until the build passes on the untouched sources: a clone that cannot
+build cannot push safely.
+
+**3. The project id.** The hex string in the project's URL,
+`overleaf.com/project/<id>`. The project's `CLAUDE.md` records it; otherwise
+the human reads it off their browser.
+
+**4. The token.** The human creates one: Overleaf, Account Settings, Git
+Integration, "Create token". It is theirs, one per account, good for every
+project they can open; a token is never shared between people and the account
+password is never asked for. It goes in a file outside every repo, mode 600,
+holding the bare token: where the human already keeps secrets, else
+`~/.config/overleaf/token`. Best, the human writes it from their own terminal
+so it never passes through the conversation:
+
+```bash
+mkdir -p ~/.config/overleaf && chmod 700 ~/.config/overleaf
+printf '%s' '<token>' > ~/.config/overleaf/token && chmod 600 ~/.config/overleaf/token
+```
+
+If they paste it to you instead, write that file yourself and never repeat
+the token, in a reply, a commit, a remote URL or a file in the repo.
+
+**5. The remote.**
 
 ```bash
 git remote add overleaf https://git.overleaf.com/<project-id>
@@ -33,24 +74,49 @@ git fetch overleaf
 git ls-remote --heads overleaf
 ```
 
-`<token-file>` is wherever the human keeps secrets (mode 600, the bare token,
-outside every repo); the helper reads it on each fetch and push, so nothing
-prompts and rotating the token is rewriting one file. With no such place, use
-`helper store` instead and have the human paste the token at the first prompt
-(`! git fetch overleaf`); it lands in `~/.git-credentials`.
+The helper reads the file on each fetch and push, so nothing ever prompts and
+rotating the token is rewriting one file. A 403 is a wrong or expired token,
+or an account without access to the project; a 404 is a wrong id. `ls-remote`
+names Overleaf's branch: `main` on current projects, `master` on old ones.
+Below it is written `main`.
 
-Overleaf has one branch and takes no force pushes and no other branches.
-`ls-remote` names it: `main` on current projects, `master` on old ones. Below
-it is written `main`. Mirror that locally: one branch, `main`, the same
-history on GitHub and on Overleaf, pushed as `HEAD:main`. No personal or staging branch sits
-between the clone and Overleaf; a second long-lived branch is exactly the
-drift this workflow exists to remove. Short-lived worktree branches push
-straight to both remotes and are deleted.
+**6. Shared history?** `git merge-base main overleaf/main`.
+
+- It prints a commit: someone already joined this project to its repo, and
+  you are joining them. `git merge --no-edit overleaf/main`, build, and go to
+  step 7. This is the usual case for everyone after the first person.
+- It prints nothing: you are the first. Join the histories as in "First join"
+  below, then record in the project's `CLAUDE.md` only what is the project's
+  own: that it syncs with Overleaf by this skill, the build command,
+  Overleaf's branch name, the project id, and one bootstrap line for the next
+  person, since the skill is not loadable in a clone that has not installed
+  yet: "if the `roach-overleaf` skill is missing, `git switch main && git
+  pull && pixi install`, then invoke it". Do not copy the routine there; it
+  lives here.
+
+**7. Prove both directions.** `git push --dry-run overleaf HEAD:main` proves
+write access without changing anything. If the merge or the build left
+commits to push, push them for real by section 2.
+
+**8. Retire the GitHub sync button.** Tell the human, in these words or
+better: from now on nobody presses "GitHub" sync in the Overleaf menu. It is
+not merely redundant. On any divergence it pushes a snapshot to GitHub as an
+`overleaf-<date>` branch, and it flattens symlinks into text files, so
+merging such a branch with GitHub's button breaks every committed skill link.
+For each `origin/overleaf-*` branch that exists: if `git diff <branch> main --
+'*.tex' '*.bib'` is empty, or shows only lines where `main` is newer, its
+sources are already in `main`: `git merge -s ours <branch>`, push, delete the
+branch. Otherwise take the source changes by hand, never the flattened links.
+
+**9. Report** to the human: the clone's branch, that fetch and push work,
+what the first merge brought in, and that from here on you sync by section 2
+without being asked.
+
+### First join
 
 The bridge's history is Overleaf's own, a few squashed "Update on Overleaf"
-commits, and shares no commit with the local repo even when the project was
-on GitHub sync. Join them once. Find what Overleaf holds relative to local
-history:
+commits, and shares no commit with the repo even when the project was on
+GitHub sync. Find what Overleaf holds relative to local history:
 
 ```bash
 T=$(git rev-parse overleaf/main^{tree})
@@ -70,10 +136,6 @@ git rev-list main | while read c; do
   question is which side's lines are newer.
 
 Then build and push. From here on every merge is ordinary.
-
-In the project's `CLAUDE.md`, record only what is the project's own: that it
-syncs with Overleaf by this skill, the build command, and Overleaf's branch
-name. Do not copy the routine there; it lives here.
 
 ## 2. The routine
 
