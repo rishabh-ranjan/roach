@@ -22,11 +22,11 @@ As a dependency, pinned to a tag:
 dependencies = ["roach @ git+https://github.com/rishabh-ranjan/roach@v0.5.6"]
 ```
 
-Then link the [Claude Code skills](#claude-code-skills) into the project, once:
+Then, if you want them, link the [Claude Code skills](#claude-code-skills)
+into your clone:
 
 ```bash
 pixi run python -m roach.skill
-git add .claude/skills && git commit -m "claude: roach skills"
 ```
 
 For development:
@@ -55,21 +55,21 @@ scripts and agents. Installed with the package: `pixi run ilctop`.
 The package ships [Claude Code skills](roach/skill): `roach-slurm` for driving
 `roach.slurm`, `roach-paper` for making figures and tables with
 `roach.paper`, and `roach-overleaf` for writing a paper with Overleaf
-collaborators from a local clone of the Overleaf project. Install them into the project that installs `roach`, never
-globally, so each project's skills match its own `roach`. Once, when setting
-the project up:
+collaborators from a local clone of the Overleaf project. Nothing installs them for you: each person
+links them into their own clone, by hand, if they want Claude to use them
+there. They are never installed globally, so each clone's skills match its own
+`roach`, and never committed, so a collaborator who has not asked for them
+does not get them:
 
 ```bash
 pixi run python -m roach.skill
-git add .claude/skills && git commit -m "claude: roach skills"
 ```
 
 ```
 .claude/skills/roach-slurm -> ../../.pixi/envs/default/lib/python3.12/site-packages/roach/skill/roach-slurm
 ```
 
-The links are relative symlinks into the project's own environment, so they
-are committed and work in every clone after `pixi install`. They point at the
+Keep `.claude/` in the project's `.gitignore`. The links point at the
 installed package rather than copying it: bumping `roach` in the environment
 updates the skills, with nothing to re-run. Re-run the command only when the
 link path itself changes -- a new python minor version, a renamed
@@ -79,9 +79,7 @@ Re-running reconciles: it adds missing links and removes stale ones. A link is
 roach's if its target runs through `roach/skill/`; anything else in
 `.claude/skills/` is left alone, and a real directory in a skill's place is
 skipped. The project is the nearest parent of the working directory with a
-`pyproject.toml`, `pixi.toml` or `.git`; pass a directory to override. When
-the package lives outside the project (an editable install of a clone
-elsewhere) the links are absolute: gitignore them instead.
+`pyproject.toml`, `pixi.toml` or `.git`; pass a directory to override.
 
 ## roach paper
 

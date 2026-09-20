@@ -23,14 +23,9 @@ pixi run compile                              # after each logical change; it mu
 git commit -am "<what changed>" && git push
 ```
 
-That is all of it. Every project names its build task `compile`, so no
-project restates this.
+That is all of it, and you run it unasked. Every project names its build task
+`compile`, so no project restates this.
 
-- **`git config overleaf.sync`** says who runs it. `auto`: you do, unasked.
-  `manual` or unset: the human owns every pull and push, and you never run
-  either on your own; you edit and commit locally. When they say sync, pull or
-  push, do it and say what came in and what went out. Do not nudge them to
-  switch modes.
 - **A refused push** means someone typed since your pull: `git pull && git
   push`, building in between if the pull brought in `.tex` changes. Never
   force (Overleaf refuses it), never rebase (`pull.rebase false`).
@@ -39,8 +34,7 @@ project restates this.
 - **Read what a pull brought in** when it touched the file you are about to
   edit (`git log -p ORIG_HEAD..HEAD -- <file>`).
 - **Build before you push.** Collaborators compile the pushed sources in the
-  browser the moment they land. This binds you, not the human: what they push
-  from their own shell is their call.
+  browser the moment they land.
 - Overleaf has one branch and accepts no others. Local branches and worktrees
   are short-lived and merge into `main` before anything is pushed.
 
@@ -104,13 +98,12 @@ Nothing prompts, then or later, and rotating the token is rewriting one file.
 A 403 is a wrong or expired token, or an account without access; a 404 is a
 wrong id.
 
-**Then**, in the clone: `git config pull.rebase false`, `pixi install` (it
-makes the committed skill links resolve), and `pixi run compile` once (LaTeX is not in the pixi
-env: if `latexmk` is missing the human installs MacTeX, TinyTeX or TeX Live;
-a missing `.sty` is `tlmgr install <pkg>`). Ask the human one question:
-should you pull and push on your own, or only when they say so? `git config
-overleaf.sync auto` or `manual`; it binds this clone only. Tell them what
-`git pull` and `git push` now do, and that a refused push wants a pull first.
+**Then**, in the clone: `git config pull.rebase false`, `pixi install`,
+`pixi run python -m roach.skill` (the skill links are per clone and never
+committed: a collaborator's Claude does not see this skill unless they link
+it themselves), and `pixi run compile` once. LaTeX is not in the pixi env: if
+`latexmk` is missing the human installs MacTeX, TinyTeX or TeX Live; a
+missing `.sty` is `tlmgr install <pkg>`.
 
 **A project that lived in another git repo** (GitHub, with or without
 Overleaf's sync button) moves once, by one person: clone from Overleaf as
