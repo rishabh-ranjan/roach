@@ -26,27 +26,47 @@ into a remote URL, a file in the repo, or a commit.
 
 ```bash
 git remote add overleaf https://git.overleaf.com/<project-id>
-git config credential.https://git.overleaf.com.helper store
 git config credential.https://git.overleaf.com.username git
+git config credential.https://git.overleaf.com.helper \
+  '!f() { test "$1" = get && echo "password=$(cat <token-file>)"; }; f'
 git fetch overleaf
+git ls-remote --heads overleaf
 ```
 
-The first fetch prompts for the password: the human pastes the token, by
-running the fetch themselves (`! git fetch overleaf`). `store` keeps it in
-`~/.git-credentials`, outside the repo. After that nothing prompts.
+`<token-file>` is wherever the human keeps secrets (mode 600, the bare token,
+outside every repo); the helper reads it on each fetch and push, so nothing
+prompts and rotating the token is rewriting one file. With no such place, use
+`helper store` instead and have the human paste the token at the first prompt
+(`! git fetch overleaf`); it lands in `~/.git-credentials`.
 
-Overleaf has one branch, `master`, and takes no force pushes and no other
-branches. Mirror that locally: one branch, `main`, the same history on GitHub
-and on Overleaf, pushed as `HEAD:master`. No personal or staging branch sits
+Overleaf has one branch and takes no force pushes and no other branches.
+`ls-remote` names it: `main` on current projects, `master` on old ones. Below
+it is written `main`. Mirror that locally: one branch, `main`, the same
+history on GitHub and on Overleaf, pushed as `HEAD:main`. No personal or staging branch sits
 between the clone and Overleaf; a second long-lived branch is exactly the
 drift this workflow exists to remove. Short-lived worktree branches push
 straight to both remotes and are deleted.
 
-If the local repo and the Overleaf project have unrelated histories (the
-project was started in the web editor and the repo elsewhere), merge once with
-`git merge --allow-unrelated-histories overleaf/master` and resolve by hand,
-with the human, before anything else. If the project was on GitHub sync, the
-histories are already shared and the first merge is ordinary.
+The bridge's history is Overleaf's own, a few squashed "Update on Overleaf"
+commits, and shares no commit with the local repo even when the project was
+on GitHub sync. Join them once. Find what Overleaf holds relative to local
+history:
+
+```bash
+T=$(git rev-parse overleaf/main^{tree})
+git rev-list main | while read c; do
+  [ "$(git rev-parse $c^{tree})" = "$T" ] && git log -1 --oneline $c; done
+```
+
+- A hit means Overleaf's tree is exactly an ancestor: it has nothing local
+  lacks. `git merge --allow-unrelated-histories -s ours overleaf/main`.
+- No hit means there are web edits local never saw. `git diff main
+  overleaf/main -- '*.tex' '*.bib'` shows them; merge with
+  `--allow-unrelated-histories` (no `-s ours`), and resolve by hand, with the
+  human: every file conflicts as add/add, and for each the question is which
+  side's lines are newer.
+
+Then build and push. From here on every merge is ordinary.
 
 Write the routine of section 2, with the project's build command filled in,
 into the project's `CLAUDE.md`, so every session follows it.
@@ -56,7 +76,7 @@ into the project's `CLAUDE.md`, so every session follows it.
 Before touching any paper source:
 
 ```bash
-git fetch overleaf && git merge --no-edit overleaf/master
+git fetch overleaf && git merge --no-edit overleaf/main
 ```
 
 After each logical change, not at the end of the session:
@@ -64,22 +84,22 @@ After each logical change, not at the end of the session:
 ```bash
 <build>                                  # the project's latexmk task; it must pass
 git commit -am "<what changed>"
-git fetch overleaf && git merge --no-edit overleaf/master
-git push overleaf HEAD:master
+git fetch overleaf && git merge --no-edit overleaf/main
+git push overleaf HEAD:main
 git push origin HEAD                     # if there is a GitHub remote too
 ```
 
 - **Merge, do not rebase.** The branch also lives on GitHub; rebasing onto
   Overleaf rewrites commits already pushed there.
-- **Small and often.** Overleaf commits web edits into `master` continuously.
+- **Small and often.** Overleaf commits web edits into its branch continuously.
   A local branch that drifts for a day is the only source of real conflicts;
   a push every few minutes of work almost never conflicts.
 - **A rejected push** means someone typed in between: fetch, merge, build,
   push again. Never force.
-- **Build before pushing.** Collaborators compile `master` in the browser the
+- **Build before pushing.** Collaborators compile the pushed sources in the browser the
   moment it lands; a broken push breaks their editor.
 - **Build again after a merge that brought in `.tex` changes**, before
-  pushing, and read what came in (`git log -p ORIG_HEAD..overleaf/master`):
+  pushing, and read what came in (`git log -p ORIG_HEAD..overleaf/main`):
   collaborators' edits are the context for the next thing you write.
 
 ## 3. Conflicts
