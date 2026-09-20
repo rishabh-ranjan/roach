@@ -133,7 +133,7 @@ remotes, builds, and pushes to both, stopping at the first failure (a
 conflict, a broken build, a clone with no `overleaf` remote yet) with nothing
 pushed; within seconds the web editor shows the edits, and open editors
 update in place. `pixi run pull` is the first half alone. Neither commits
-anything: uncommitted work, the rebuilt PDF included, stays local.
+anything: uncommitted work stays local.
 
 **10. Report** to the human: the clone's branch, that fetch and push work,
 what the first merge brought in, and which sync mode is set and how to change
@@ -232,7 +232,10 @@ to it, and tell the human. Then build, commit the merge, push.
   different sections never share a file.
 - **Generated figures and tables are committed** at the path the `.tex`
   includes (see `roach-paper`), so Overleaf compiles them without running any
-  code. Build products (`build/`, `*.aux`, the environment) are gitignored.
+  code. Build products (`build/`, `*.aux`, the paper's own PDF, the
+  environment) are gitignored: a tracked `main.pdf` changes on every build,
+  so every sync would carry a binary nobody can merge, and Overleaf compiles
+  its own.
 - Overleaf refuses a push with a file over 50 MB or more than 2000 files, and
   names the offender in the rejection. Fix the tree; do not retry.
 
