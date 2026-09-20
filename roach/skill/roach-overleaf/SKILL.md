@@ -60,11 +60,14 @@ git rev-list main | while read c; do
 
 - A hit means Overleaf's tree is exactly an ancestor: it has nothing local
   lacks. `git merge --allow-unrelated-histories -s ours overleaf/main`.
-- No hit means there are web edits local never saw. `git diff main
-  overleaf/main -- '*.tex' '*.bib'` shows them; merge with
-  `--allow-unrelated-histories` (no `-s ours`), and resolve by hand, with the
-  human: every file conflicts as add/add, and for each the question is which
-  side's lines are newer.
+- No hit means there are web edits local never saw. Usually Overleaf is a
+  recent local commit plus those edits: find it (`git diff --stat <commit>
+  overleaf/main` over the last few commits, smallest diff wins). If local has
+  not touched the same files since, `git merge --allow-unrelated-histories -s
+  ours --no-commit overleaf/main`, then `git checkout overleaf/main -- <the
+  edited files>`, and commit. Otherwise merge without `-s ours` and resolve by
+  hand, with the human: every file conflicts as add/add, and for each the
+  question is which side's lines are newer.
 
 Then build and push. From here on every merge is ordinary.
 
@@ -89,6 +92,10 @@ git fetch overleaf && git merge --no-edit overleaf/main
 git push overleaf HEAD:main
 git push origin HEAD                     # if there is a GitHub remote too
 ```
+
+With a GitHub remote that other people also push to (a collaborator's own
+clone, or someone still pressing Overleaf's GitHub sync button), fetch and
+merge `origin/main` in the same two places as `overleaf/main`.
 
 - **Merge, do not rebase.** The branch also lives on GitHub; rebasing onto
   Overleaf rewrites commits already pushed there.
