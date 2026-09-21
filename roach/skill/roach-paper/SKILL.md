@@ -1,6 +1,6 @@
 ---
 name: roach-paper
-description: Paper figures and tables through roach.paper (github.com/rishabh-ranjan/roach) — the figure design system (Inter, a fixed type scale, a reserved accent color, true-size saving) and LaTeX table helpers. Use whenever a matplotlib figure, plot, chart or LaTeX table is made or edited for a paper, poster or slides, or when roach.paper, figure fonts, colors, sizes or \includegraphics widths come up.
+description: Paper figures and tables through roach.paper (github.com/rishabh-ranjan/roach) — the figure design system (Inter, a fixed type scale, a reserved primary color, OKLCh shades, true-size saving, HTML diagram export) and LaTeX table helpers. Use whenever a matplotlib figure, plot, chart or LaTeX table is made or edited for a paper, poster or slides, or when roach.paper, figure fonts, colors, sizes or \includegraphics widths come up.
 ---
 
 # roach paper
@@ -16,7 +16,7 @@ from roach import paper
 
 paper.apply()
 fig, ax = plt.subplots(figsize=(0.49 * paper.LINEWIDTH_IN, 1.4))
-ax.plot(x, y_ours, color=paper.OURS)
+ax.plot(x, y_ours, color=paper.PRIMARY)
 paper.save_at_width(fig, "figures/results/curve.pdf", 0.49 * paper.LINEWIDTH_IN)
 ```
 
@@ -51,17 +51,34 @@ STIX. Do not substitute Helvetica or Arial.
 
 ## 3. Color
 
-- `paper.OURS` (cardinal red, `#8C1515`) belongs to the paper's own method,
-  whatever the paper calls it, and to nothing else: its curves, markers, and
-  its name wherever the name is drawn, in bold. The LaTeX macro for the method
-  name uses the same hex, so text and figures agree:
+Three roles, referred to by role name, never by hex or brand name:
+
+- `paper.PRIMARY` (cardinal red, `#8C1515`) belongs to the paper's own
+  method, whatever the paper calls it, and to nothing else: its curves,
+  markers, and its name wherever the name is drawn, in bold. The LaTeX macro
+  for the method name uses the same hex, so text and figures agree:
   `\definecolor{ours}{HTML}{8C1515}`,
   `\newcommand{\ours}{\textcolor{ours}{\textbf{Name}}}`.
+- `paper.ACCENT` (palo alto green) marks the second thing the reader should
+  see: the target, the task, the in-context part.
+- `paper.NEUTRAL` (cool grey) is structure and non-focal elements;
+  `paper.BLACK` the ink.
 - Every other method gets one fixed muted color, defined once and reused
   identically in every figure of the paper.
-- `paper.PALO_ALTO` (green) is the secondary accent, `paper.COOL_GREY` the
-  neutral for structure and non-focal elements, `paper.BLACK` the ink.
-- Lighter variants of a hue hold the hue and step OKLCh lightness, not HSL.
+- Lighter variants come from `paper.shades(hex)`, which returns `base`,
+  `light` (OKLCh L 0.72) and `soft` (L 0.90) with hue held and chroma
+  tapered, so a light green and a light red read as equally light. Use them
+  for bands, fills and de-emphasized series; never hand-pick a tint.
+
+## 3b. Hand-drawn diagrams
+
+A schematic that matplotlib cannot draw is HTML/SVG on a fixed px canvas,
+exported with `paper.html_to_pdf(src, path, canvas_w, canvas_h, width_in)`
+(needs `playwright` and its chromium). Pick a canvas so 1 pt is a whole number
+of px (4 px/pt for a 5.5 in figure is 1584 px wide) and express every font
+size in that unit on the type scale above. Load Inter with
+`paper.font_face_css()` in a `<style>`, colors from `paper.shades` on the role
+constants. Then read the PDF like any other figure.
 
 ## 4. Chrome
 
@@ -82,7 +99,7 @@ figure).
 
 After every change, regenerate the figure and read the PDF itself (the Read
 tool renders it). Check: no overlapping or clipped text, fonts are Inter,
-sizes are on the scale, `OURS` is only on our method, and `pdfinfo` reports
+sizes are on the scale, `PRIMARY` is only on our method, and `pdfinfo` reports
 the slot width (`width_in * 72` pt). A figure that was not looked at is not
 done.
 
