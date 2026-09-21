@@ -14,7 +14,7 @@ pixi run compile                              # after each logical change; it mu
 git commit -am "<what changed>" && git push
 ```
 
-Do this unasked, after every logical change, not at the end of the session.
+Do this unasked, after every major set of changes, not at the end of the session.
 
 - A refused push means someone typed since your pull: `git pull`, build again
   if `.tex` came in, push. Never force, never rebase.
