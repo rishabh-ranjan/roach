@@ -1,6 +1,6 @@
 ---
 name: roach-overleaf
-description: Habits for editing a paper in a local clone of an Overleaf project (origin is git.overleaf.com) — pull before editing, build, commit and push after each change. Use before and after any edit to the paper sources of such a clone, and whenever syncing with Overleaf comes up.
+description: Habits for editing a paper in a local clone of an Overleaf project (origin is git.overleaf.com) — pull before editing, build, commit and push after each change, and a watcher that picks up `@claude` comments as collaborators leave them. Use before and after any edit to the paper sources of such a clone, and whenever syncing with Overleaf comes up.
 ---
 
 # roach overleaf
@@ -53,9 +53,25 @@ implements the request.
 Requests arrive inside the authors' comment macros, e.g.
 `\rishabh{@claude remove enumerate}`.
 
+Start the watcher as soon as this skill loads, unasked, and keep it running for
+the whole session. Run it under the Monitor tool from the repo root, with the
+longest timeout Monitor allows, and start it again every time it expires or
+exits:
+
 ```bash
-git pull && grep -rn '@claude' --include='*.tex' .
+bash .claude/skills/roach-overleaf/scripts/claude-watch.sh      # [poll-seconds], default 30
 ```
+
+It fetches, never touching the working tree, and prints one `NEW <file>:<line>:
+<comment>` line per `@claude` comment that was not there on the previous round,
+including the ones already open when it starts. Every quarter hour it prints a
+heartbeat with the number of open comments, so silence is never a dead watcher.
+
+On a `NEW` line, act at once, without waiting for the human: `git pull`, read
+the comment in full in the file (the line is truncated and a comment may span
+lines), address it under the rules above, build, commit, push. Then report what
+changed. If a comment is unclear, ask in the reply and leave the comment in
+place.
 
 Address each one, then delete that comment and only that comment. Every other
 author comment stays, including ones you believe are resolved, unless the human
