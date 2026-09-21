@@ -51,7 +51,7 @@ implements the request.
 ## `@claude` comments
 
 Requests arrive inside the authors' comment macros, e.g.
-`\rishabh{@claude remove enumerate}`.
+`\rishabh{@claude remove enumerate}`. Any capitalization counts (`@Claude`).
 
 Start the watcher as soon as this skill loads, unasked, as a Bash command with
 `run_in_background`, from the repo root:

@@ -11,7 +11,7 @@ fails=0
 while true; do
     if git fetch -q 2>/dev/null; then
         fails=0
-        hits=$(git grep -n -I '@claude' '@{u}' -- '*.tex' 2>/dev/null | cut -d: -f2-)
+        hits=$(git grep -n -I -i '@claude' '@{u}' -- '*.tex' 2>/dev/null | cut -d: -f2-)
         keys=$(echo "$hits" | sed -E 's/^([^:]*):[0-9]+:/\1:/')
         new=""
         while IFS= read -r hit; do
