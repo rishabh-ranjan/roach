@@ -133,7 +133,11 @@ that is this shape with that cluster's counters in it: start from it.
 
 **Make the monitor watch the budget, not just the jobs.** A high-tier slot
 frees the instant any job of yours ends, which is far more often than any sane
-interval. Count the running jobs per tier against the cluster's budget every
+interval. The single most-missed case is your own multi-GPU job completing: an
+8-gpu `il` job ending hands back nearly the whole cap in one event, and a
+monitor that reports only job states shows a healthy queue while the cap sits
+idle for hours. A sweep monitor therefore carries a per-tier held-GPU counter
+in every round's line, not just on change. Count the running jobs per tier against the cluster's budget every
 round and emit a distinct line when a tier has room while anything of yours is
 pending; that line is a [promotion to make now](#4-rebalance-while-it-runs),
 not a status update. A sweep of short jobs turns tiers over every few minutes,
