@@ -53,25 +53,25 @@ implements the request.
 Requests arrive inside the authors' comment macros, e.g.
 `\rishabh{@claude remove enumerate}`. Any capitalization counts (`@Claude`).
 
-Start the watcher as soon as this skill loads, unasked, under the Monitor tool
-with the longest timeout it allows, from the repo root. When Monitor reports
-that it expired, start it again:
+Start the watcher as soon as this skill loads, unasked, as a Bash command with
+`run_in_background`, from the repo root:
 
 ```bash
 bash .claude/skills/roach-overleaf/scripts/claude-watch.sh      # [poll-seconds], default 30
 ```
 
-It loops forever: it fetches, never touching the working tree, and prints one
-`NEW <file>:<line>: <comment>` line per `@claude` comment it has not reported
-before, including the ones already open when it first starts. It remembers what
-it reported in `.git/claude-watch.seen`, so a restart does not repeat a comment
-you left in place.
+It polls until there is something to say: it fetches, never touching the working
+tree, and when `@claude` comments appear that it has not reported before
+(including the ones already open when it first starts) it prints one `NEW
+<file>:<line>: <comment>` line each and exits. Its exit is what wakes you, and
+its last line tells you to start it again. It remembers what it reported in
+`.git/claude-watch.seen`, so a comment you left in place does not fire again.
 
-On a `NEW` line, act at once, without waiting for the human: `git pull`, read
-the comment in full in the file (the line is truncated and a comment may span
-lines), address it under the rules above, build, commit, push. Then report what
-changed. If a comment is unclear, ask in the reply and leave the comment in
-place.
+When it exits, the first thing you do, before reading anything, is start it
+again the same way. Only then: `git pull`, read each comment in full in the file
+(the line is truncated and a comment may span lines), address it under the rules
+above, build, commit, push, and report what changed, without waiting for the
+human. If a comment is unclear, ask in the reply and leave the comment in place.
 
 Address each one, then delete that comment and only that comment. Every other
 author comment stays, including ones you believe are resolved, unless the human
