@@ -615,6 +615,8 @@ def render(nodes, running, my, pending, cpus, width):
         """rows: [(label, free, total)] -> cells with columns aligned in-section."""
         # key right-aligned; both sides of the slash right-aligned, as in the
         # "my cpus"/"my gpus" sections
+        if not rows:
+            return []
         lw = max(len(r[0]) for r in rows)
         nw = max(len(str(r[1])) for r in rows)
         dw = max(len(str(r[2])) for r in rows)
