@@ -53,25 +53,48 @@ implements the request.
 Requests arrive inside the authors' comment macros, e.g.
 `\rishabh{@claude remove enumerate}`.
 
-Start the watcher as soon as this skill loads, unasked, and keep it running for
-the whole session. Run it under the Monitor tool from the repo root, with the
-longest timeout Monitor allows, and start it again every time it expires or
-exits:
+Start the watcher as soon as this skill loads, unasked, as a Bash command with
+`run_in_background`, from the repo root:
 
 ```bash
 bash .claude/skills/roach-overleaf/scripts/claude-watch.sh      # [poll-seconds], default 30
 ```
 
-It fetches, never touching the working tree, and prints one `NEW <file>:<line>:
-<comment>` line per `@claude` comment that was not there on the previous round,
-including the ones already open when it starts. Every quarter hour it prints a
-heartbeat with the number of open comments, so silence is never a dead watcher.
+It fetches, never touching the working tree, and exits printing one `NEW
+<file>:<line>: <comment>` line per `@claude` comment it has not reported before,
+including the ones already open when it starts. Its exit is what wakes you. It
+remembers what it reported in `.git/claude-watch.seen`, so a comment you left in
+place does not fire again, and it holds `.git/claude-watch.lock`, so a second
+copy exits at once.
 
-On a `NEW` line, act at once, without waiting for the human: `git pull`, read
-the comment in full in the file (the line is truncated and a comment may span
-lines), address it under the rules above, build, commit, push. Then report what
-changed. If a comment is unclear, ask in the reply and leave the comment in
-place.
+On a `NEW` line, act at once, without waiting for the human: start the watcher
+again first, then `git pull`, read the comment in full in the file (the line is
+truncated and a comment may span lines), address it under the rules above,
+build, commit, push. Then report what changed. If a comment is unclear, ask in
+the reply and leave the comment in place.
+
+The restart does not rest on your memory. A Stop hook refuses to let a turn end
+while no watcher holds the lock, and tells you to start one. If
+`.claude/settings.json` does not have it yet, add it, and tell the human that a
+settings file created mid-session needs `/hooks` opened once or a restart
+before it loads:
+
+```json
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/skills/roach-overleaf/scripts/claude-watch-guard.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
 
 Address each one, then delete that comment and only that comment. Every other
 author comment stays, including ones you believe are resolved, unless the human
