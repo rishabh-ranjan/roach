@@ -107,8 +107,8 @@ paper.html_to_pdf("figures/intro/overview.dc.html", "figures/intro/overview.pdf"
                   canvas_w=1584, canvas_h=704, width_in=paper.LINEWIDTH_IN)
 ```
 
-- Needs `playwright` and its chromium in the project environment; roach does
-  not depend on them.
+- roach depends on `playwright`; the browser is a one-time step per
+  environment: `pixi run playwright install chromium`.
 - Pick the canvas so 1 pt is a whole number of px (4 px/pt: 1584 px wide for
   a 5.5 in figure) and express every font size in that unit on the type
   scale above (7 pt = 28 px at 4 px/pt); a denser sub-scale is a deviation

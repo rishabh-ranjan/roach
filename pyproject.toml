@@ -1,6 +1,6 @@
 [project]
 name = "roach"
-version = "0.6.1"
+version = "0.6.2"
 description = "fearless experiment management"
 readme = "README.md"
 authors = [{name = "Rishabh Ranjan", email = "rishabhranjan0207@gmail.com"}]
@@ -8,6 +8,7 @@ requires-python = ">=3.11"
 dependencies = [
     "beartype",
     "matplotlib",
+    "playwright",
     "pytest",
 ]
 
