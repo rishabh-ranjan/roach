@@ -9,7 +9,10 @@ description: Slurm jobs through the roach package (github.com/rishabh-ranjan/roa
 resumable across preemption and the wall clock. Its README
 (`roach/slurm/README.md` in the installed package, or on GitHub) is the
 reference for what a job does, the clone protocol, and the read-only rule; this
-skill is the workflow around it and what each cluster is like.
+skill is the workflow around it and what each cluster is like. roach is an
+unpinned git dependency (`roach = { git = "https://github.com/rishabh-ranjan/roach" }`
+in `pixi.toml`); never add a `rev` or tag. `pixi update roach` moves the lock
+to the latest commit.
 
 ## 1. Which cluster
 

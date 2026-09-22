@@ -15,11 +15,12 @@ close collaborators and me.
 
 ## install
 
-As a dependency, pinned to a tag:
+As an unpinned git dependency; `pixi update roach` moves the lock to the
+latest commit:
 
 ```toml
-# pyproject.toml
-dependencies = ["roach @ git+https://github.com/rishabh-ranjan/roach@v0.5.6"]
+# pixi.toml / pyproject.toml [tool.pixi.pypi-dependencies]
+roach = { git = "https://github.com/rishabh-ranjan/roach" }
 ```
 
 Then, if you want them, link the [Claude Code skills](#claude-code-skills)
