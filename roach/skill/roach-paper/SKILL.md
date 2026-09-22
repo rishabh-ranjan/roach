@@ -76,9 +76,10 @@ A schematic that matplotlib cannot draw is HTML/SVG on a fixed px canvas,
 exported with `paper.html_to_pdf(src, path, canvas_w, canvas_h, width_in)`
 (needs `playwright` and its chromium). Pick a canvas so 1 pt is a whole number
 of px (4 px/pt for a 5.5 in figure is 1584 px wide) and express every font
-size in that unit on the type scale above. Load Inter with
-`paper.font_face_css()` in a `<style>`, colors from `paper.shades` on the role
-constants. Then read the PDF like any other figure.
+size in that unit on the type scale above. Declare `font-family: 'Inter'`
+and nothing else: the export injects the package's Inter, so the HTML carries
+no font files or paths. Colors from `paper.shades` on the role constants.
+Then read the PDF like any other figure.
 
 ## 4. Chrome
 

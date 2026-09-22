@@ -96,6 +96,7 @@ def html_to_pdf(src, path, canvas_w, canvas_h, width_in=LINEWIDTH_IN):
         b = p.chromium.launch()
         page = b.new_page(viewport={"width": canvas_w, "height": canvas_h})
         page.goto(Path(src).resolve().as_uri())
+        page.add_style_tag(content=font_face_css())
         page.wait_for_load_state("networkidle")
         page.evaluate("document.fonts.ready")
         page.pdf(
