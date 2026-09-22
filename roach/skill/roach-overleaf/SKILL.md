@@ -53,8 +53,9 @@ implements the request.
 Requests arrive inside the authors' comment macros, e.g.
 `\rishabh{@claude remove enumerate}`. Any capitalization counts (`@Claude`).
 
-Start the watcher as soon as this skill loads, unasked, as a Bash command with
-`run_in_background`, from the repo root:
+Only when the human explicitly asks to watch for comments, start the watcher as
+a Bash command with `run_in_background`, from the repo root. Never start it
+unasked, and not merely because this skill loaded:
 
 ```bash
 bash .claude/skills/roach-overleaf/scripts/claude-watch.sh      # [poll-seconds], default 30
@@ -68,7 +69,8 @@ its last line tells you to start it again. It remembers what it reported in
 `.git/claude-watch.seen`, so a comment you left in place does not fire again.
 
 When it exits, the first thing you do, before reading anything, is start it
-again the same way. Only then: `git pull`, read each comment in full in the file
+again the same way (the human's request covers restarts until they say stop).
+Only then: `git pull`, read each comment in full in the file
 (the line is truncated and a comment may span lines), address it under the rules
 above, build, commit, push, and report what changed, without waiting for the
 human. If a comment is unclear, ask in the reply and leave the comment in place.
