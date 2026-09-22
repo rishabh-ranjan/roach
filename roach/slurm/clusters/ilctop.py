@@ -683,9 +683,9 @@ def render(nodes, running, my, pending, cpus, width):
         pack_cells(L, leg, width, indent="  ")
 
     # ---- gpu map, packed into columns ----
-    label_w = max(len(short_node(n)) for n in nodes)
-    type_w = max(len(disp_type(nodes[n]["type"])) for n in nodes)
-    glyph_w = max(nodes[n]["cap"] for n in nodes)
+    label_w = max([len(short_node(n)) for n in nodes] or [1])
+    type_w = max([len(disp_type(nodes[n]["type"])) for n in nodes] or [1])
+    glyph_w = max([nodes[n]["cap"] for n in nodes] or [0])
     nlist = sorted(nodes, key=lambda n: ((GPU_TYPE_ORDER.index(nodes[n]["type"])
               if nodes[n]["type"] in GPU_TYPE_ORDER else len(GPU_TYPE_ORDER),) + natkey(n)))
 
@@ -801,7 +801,7 @@ def render(nodes, running, my, pending, cpus, width):
                     + pad(paint("?", GRAY), gp_w, right=True)
             # the memory denominator is right-aligned, so G and W sit one apart
             mem = pad(paint("%.0f" % (gp["mu"] / 1024),
-                            *((RED,) if gp["mu"] / gp["mt"] > 0.9 else (BLACK,))),
+                            *((RED,) if gp["mt"] and gp["mu"] / gp["mt"] > 0.9 else (BLACK,))),
                       gm_nw, right=True) + "/" \
                 + pad(paint("%.0fG" % (gp["mt"] / 1024), GRAY), gm_dw, right=True)
             return "%s%s %s %s" % (head,
