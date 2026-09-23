@@ -22,6 +22,14 @@ change, yours or a collaborator's, also check the log:
 grep -n 'Reference.*undefined' build/main.log
 ```
 
+Never push on a failed build, not even when the breakage came in with a
+collaborator's commit; a broken `main` blocks their compile too, so fix it
+first and say so in a `\claude{}` note. latexmk caches a failure and then
+reports `gave an error in previous invocation`, so confirm any fix with a clean
+`rm -rf build` rebuild. Two frequent breakages, both from the web editor: a
+stray `}` left behind when a macro is deleted around a phrase, and two `\cite`
+keys differing only in case, which aborts bibtex for the whole document.
+
 - A refused push means someone typed since your pull: `git pull`, build again
   if `.tex` came in, push. Never force, never rebase. While someone is typing
   this happens on most pushes; repeat pull and push a few times before treating
@@ -53,7 +61,9 @@ the project has no such macro, add one beside the authors' own comment macros
 \providecommand{\claude}[1]{{\color{teal}{/* claude: #1 */}}}
 ```
 
-- One or two sentences, no formatting, placed where the issue is.
+- One or two sentences, no formatting, placed where the issue is. Write it as
+  plain prose: LaTeX still expands what is inside the note, so a `\cite` or a
+  stray brace quoted in it breaks the build you were reporting on.
 - Only for what cannot be done directly: a wrong number, an ambiguous request,
   a claim the data does not support, a change that needs their decision.
 - Never for narrating work you completed. A comment you addressed leaves no
