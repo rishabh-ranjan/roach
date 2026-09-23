@@ -52,7 +52,7 @@ pinned; math is STIX. Do not substitute Helvetica or Arial.
   hand-pick a tint. `pale` is the fill for a box that carries black text.
 - Text must stay legible on its fill: WCAG contrast
   (`paper.contrast(text, fill)`) of at least 4.5 for any text, 7 or more for
-  labels at `FINE_SIZE`. Black on `pale` is about 11, black on `light` about
+  labels at `FINE_SIZE`. Black on `pale` is about 9.5, black on `light` about
   7, black on `base` fails; put white text on `base` fills. Check every
   text-on-fill pair in the generator and fail the build when one drops below
   the bar, rather than judging it by eye.
