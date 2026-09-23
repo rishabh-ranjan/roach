@@ -21,6 +21,7 @@ NEUTRAL = COOL_GREY
 OURS = PRIMARY
 
 LIGHT_L, LIGHT_C = 0.72, 0.55
+PALE_L, PALE_C = 0.81, 0.42
 SOFT_L, SOFT_C = 0.90, 0.28
 
 LABEL_SIZE = 7
@@ -67,8 +68,19 @@ def shades(h):
     return {
         "base": h.upper(),
         "light": oklch_to_hex(LIGHT_L, LIGHT_C * C, H),
+        "pale": oklch_to_hex(PALE_L, PALE_C * C, H),
         "soft": oklch_to_hex(SOFT_L, SOFT_C * C, H),
     }
+
+
+def luminance(h):
+    r, g, b = (_srgb_to_lin(int(h[i : i + 2], 16) / 255) for i in (1, 3, 5))
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def contrast(a, b):
+    la, lb = sorted((luminance(a), luminance(b)), reverse=True)
+    return (la + 0.05) / (lb + 0.05)
 
 
 def font_dir():

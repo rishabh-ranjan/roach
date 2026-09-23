@@ -46,9 +46,16 @@ pinned; math is STIX. Do not substitute Helvetica or Arial.
 - Every other method gets one fixed muted color, defined once and reused
   identically in every figure of the paper.
 - Lighter variants come from `paper.shades(hex)`, which returns `base`,
-  `light` (OKLCh L 0.72) and `soft` (L 0.90) with hue held and chroma
-  tapered, so a light green and a light red read as equally light. Use them
-  for bands, fills and de-emphasized elements; never hand-pick a tint.
+  `light` (OKLCh L 0.72), `pale` (L 0.81) and `soft` (L 0.90) with hue held
+  and chroma tapered, so a light green and a light red read as equally
+  light. Use them for bands, fills and de-emphasized elements; never
+  hand-pick a tint. `pale` is the fill for a box that carries black text.
+- Text must stay legible on its fill: WCAG contrast
+  (`paper.contrast(text, fill)`) of at least 4.5 for any text, 7 or more for
+  labels at `FINE_SIZE`. Black on `pale` is about 11, black on `light` about
+  7, black on `base` fails; put white text on `base` fills. Check every
+  text-on-fill pair in the generator and fail the build when one drops below
+  the bar, rather than judging it by eye.
 
 **Look at it.** After every change, regenerate the figure and read the PDF
 itself (the Read tool renders it). Check: no overlapping or clipped text,
