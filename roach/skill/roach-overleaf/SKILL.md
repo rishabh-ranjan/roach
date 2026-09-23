@@ -24,7 +24,7 @@ grep -n 'Reference.*undefined' build/main.log
 
 Never push on a failed build, not even when the breakage came in with a
 collaborator's commit; a broken `main` blocks their compile too, so fix it
-first and say so in a `\claude{}` note. latexmk caches a failure and then
+first, silently. latexmk caches a failure and then
 reports `gave an error in previous invocation`, so confirm any fix with a clean
 `rm -rf build` rebuild. Two frequent breakages, both from the web editor: a
 stray `}` left behind when a macro is deleted around a phrase, and two `\cite`
@@ -52,25 +52,35 @@ keys differing only in case, which aborts bibtex for the whole document.
 
 ## Talking to the authors
 
-**Nobody reads your chat replies.** The paper is the only channel. Anything the
-authors must know goes into the `.tex` as a `\claude{}` note, pushed like any other change. If
-the project has no such macro, add one beside the authors' own comment macros
+**Nobody reads your chat replies.** The paper is the only channel, and it is a
+channel you use almost never.
+
+A `\claude{}` note is a last resort, for the rare thing that would otherwise be
+silently wrong and that you cannot settle yourself: a number the data
+contradicts, a request you could not carry out as asked. Not for fixes, not for
+caveats you can live with, not for anything you already did.
+
+When you must, **a few words**. Not a sentence, not an explanation, not an
+apology:
+
+```latex
+\claude{0.990 not lossless}
+\claude{no cite for data agents}
+```
+
+Everything else is silence. A typo you corrected, a build you unbroke, a
+comment you carried out, a merge you resolved: the diff already says it. Adding
+a note about work that went fine is noise in someone's paper.
+
+Write the note as plain prose. LaTeX expands what is inside it, so a `\cite` or
+a stray brace quoted in a note breaks the build you were reporting on.
+
+If the project has no such macro, add one beside the authors' own comment macros
 (`\liana{}`, `\rishabh{}`), honoring whatever switch hides them at submission:
 
 ```latex
 \providecommand{\claude}[1]{{\color{teal}{/* claude: #1 */}}}
 ```
-
-- One or two sentences, no formatting, placed where the issue is. Write it as
-  plain prose: LaTeX still expands what is inside the note, so a `\cite` or a
-  stray brace quoted in it breaks the build you were reporting on.
-- Only for what cannot be done directly: a wrong number, an ambiguous request,
-  a claim the data does not support, a change that needs their decision.
-- Never for narrating work you completed. A comment you addressed leaves no
-  note; the diff is the report.
-- A `\claude{}` note is a question to a human, so leave the `@claude` comment
-  you were answering in place only when you did nothing else; if you both
-  answered and edited, delete the comment and let the note carry the caveat.
 
 ## Editing collaborators' text
 
@@ -88,12 +98,12 @@ implements the request.
   ```
 
 - If a change forces edits elsewhere (renamed notation, a removed label, the
-  appendix), keep those minimal too and note them in a `\claude{}` if a human
-  has to act on them.
+  appendix), keep those minimal too.
 - Numbers in the text are checked against the run data, never against other
   prose. When a request is "is this right?", recompute from the CSVs the figure
-  scripts read (`gen/`), and report the answer in a `\claude{}` note with the
-  corrected value, without editing the claim unless asked.
+  scripts read (`gen/`). If the prose is wrong, correct the number; if what is
+  wrong is the claim around it, a few words in a `\claude{}` note is the one
+  case that earns one.
 
 ## `@claude` comments
 
@@ -132,7 +142,7 @@ When it exits, the first thing you do, before reading anything, is start it
 again the same way (the human's request covers restarts until they say stop).
 Only then: `git pull`, read each comment in full in the file (a comment may span
 lines and may sit mid-sentence), address it under the rules above, build, commit,
-push. Report nothing to chat that a human needs; use `\claude{}`.
+push, and say nothing anywhere unless a `\claude{}` note is truly earned.
 
 Address each one, then delete that comment and only that comment. Every other
 author comment stays, including ones you believe are resolved, unless the human
