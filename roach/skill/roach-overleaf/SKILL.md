@@ -45,8 +45,13 @@ grep -n 'Reference.*undefined' build/main.log
 ## Talking to the authors
 
 **Nobody reads your chat replies.** The paper is the only channel. Anything the
-authors must know goes into the `.tex` as a `\claude{}` note (defined in
-`macros.tex` beside `\liana{}` and `\rishabh{}`), pushed like any other change.
+authors must know goes into the `.tex` as a `\claude{}` note, pushed like any other change. If
+the project has no such macro, add one beside the authors' own comment macros
+(`\liana{}`, `\rishabh{}`), honoring whatever switch hides them at submission:
+
+```latex
+\providecommand{\claude}[1]{{\color{teal}{/* claude: #1 */}}}
+```
 
 - One or two sentences, no formatting, placed where the issue is.
 - Only for what cannot be done directly: a wrong number, an ambiguous request,
