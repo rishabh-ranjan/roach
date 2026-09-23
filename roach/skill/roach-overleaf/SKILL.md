@@ -55,18 +55,20 @@ keys differing only in case, which aborts bibtex for the whole document.
 **Nobody reads your chat replies.** The paper is the only channel, and it is a
 channel you use almost never.
 
-A `\claude{}` note is a last resort, for the rare thing that would otherwise be
-silently wrong and that you cannot settle yourself: a number the data
-contradicts, a request you could not carry out as asked. Not for fixes, not for
-caveats you can live with, not for anything you already did.
+A `\claude{}` note answers one thing only: an `@claude` ask you could not carry
+out as written. Nothing else earns a note. Not a fix, not a caveat you can live
+with, not anything you already did.
 
-When you must, **a few words**. Not a sentence, not an explanation, not an
-apology:
+It opens with `@` and the name of whoever left that ask, since it is a reply to
+them, then **a few words**. Not a sentence, not an explanation, not an apology:
 
 ```latex
-\claude{0.990 not lossless}
-\claude{no cite for data agents}
+\claude{@liana 0.990 not lossless}
+\claude{@rishabh no cite for data agents}
 ```
+
+The watcher names the author of each comment it reports. For an `@claude` inside
+someone's own macro (`\rishabh{@claude ...}`), that macro names them instead.
 
 Everything else is silence. A typo you corrected, a build you unbroke, a
 comment you carried out, a merge you resolved: the diff already says it. Adding
@@ -102,8 +104,7 @@ implements the request.
 - Numbers in the text are checked against the run data, never against other
   prose. When a request is "is this right?", recompute from the CSVs the figure
   scripts read (`gen/`). If the prose is wrong, correct the number; if what is
-  wrong is the claim around it, a few words in a `\claude{}` note is the one
-  case that earns one.
+  wrong is the claim around it, reply to the asker in a few words.
 
 ## `@claude` comments
 
@@ -120,13 +121,15 @@ bash .claude/skills/roach-overleaf/scripts/claude-watch.sh      # [poll-seconds]
 ```
 
 It polls until there is something to say: it fetches, never touching the working
-tree, and prints one `NEW <file>:<line>\t<comment>` line per comment it has not
-reported before, then exits. Its exit is what wakes you, and its last line tells
+tree, and prints one `NEW <file>:<line> by <author>: <comment>` line per comment
+it has not reported before, then exits. The author is who to address in a reply. Its exit is what wakes you, and its last line tells
 you to start it again. It remembers what it reported in `.git/claude-watch.seen`,
 so a comment you left in place does not fire again.
 
 The watcher is deliberately slow and quiet:
 
+- A comment is tracked by its file and text, not its line, so a paragraph added
+  above one does not make it look new.
 - A comment is reported only when its text has been unchanged for two polls in
   a row, and never while its `{` is still unclosed. Both mean a comment being
   typed in the web editor does not reach you half-written.

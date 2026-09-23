@@ -37,9 +37,15 @@ for m in re.finditer(r"@claude\{", s, re.I):
     if depth:
         continue
     body = " ".join(s[m.end():i - 1].split())
-    print(f"{f}:{s.count(chr(10), 0, m.start()) + 1}\t{body}")
+    print(f"{f}\t{s.count(chr(10), 0, m.start()) + 1}\t{body}")
 ' "$f"
     done
+}
+
+# Who wrote the line the comment sits on, so the reply can address them.
+blame_author() {
+    git blame -L "$2,$2" --porcelain '@{u}' -- "$1" 2>/dev/null |
+        sed -n 's/^author //p' | head -1
 }
 
 while true; do
@@ -67,12 +73,15 @@ while true; do
     fi
     if (( stable >= quiet )); then
         new=""
-        while IFS= read -r hit; do
-            [[ -z $hit ]] && continue
-            grep -qxF -- "$hit" "$seen_file" || new+="NEW $hit"$'\n'
+        while IFS=$'\t' read -r file line body; do
+            [[ -z ${file:-} ]] && continue
+            # Keyed on file and text, not line: a paragraph added above a
+            # comment must not make it look new.
+            grep -qxF -- "$file"$'\t'"$body" "$seen_file" && continue
+            new+="NEW $file:$line by $(blame_author "$file" "$line"): $body"$'\n'
         done <<<"$cur"
         if [[ -n $new ]]; then
-            printf '%s' "$cur" >"$seen_file"
+            cut -f1,3- <<<"$cur" >"$seen_file"
             printf '%s' "$new"
             echo "FIRST start this watcher again (Bash, run_in_background: bash $0 $poll), THEN address the comments."
             exit 0
