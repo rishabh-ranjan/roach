@@ -56,6 +56,17 @@ fonts are Inter, sizes are on the scale, `PRIMARY` is only on our method, and
 the page width is the slot width (`width_in * 72` pt). A figure that was not
 looked at is not done. Save PDF, never PNG, for anything LaTeX includes.
 
+**Look at it at high resolution.** A whole-figure render is downsampled
+before you see it, which hides the defects that matter: baselines of small
+caps, subscripts spilling out of shapes, touching glyphs, 1 to 2 px overlaps,
+misaligned arrowheads. Rasterize the PDF at 600 dpi or more
+(`pdftoppm -r 600 -png -singlefile fig.pdf /tmp/fig`) and read it in tiles
+of about 1100 px on the long side (a 5.5 in figure at 600 dpi is a 3 × 2
+grid), every tile, after every change. Judge defects from the tiles, never
+from the downsampled whole. For a check whose answer is a number (a gap, a
+padding, an overflow), measure it in code (text bounding boxes from the
+browser for diagrams, `get_window_extent` for matplotlib) rather than by eye.
+
 ## A. Plots (matplotlib)
 
 ```python
