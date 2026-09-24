@@ -5,13 +5,45 @@ git_dir=$(git rev-parse --absolute-git-dir) || exit 1
 seen_file=$git_dir/claude-watch.seen
 lock_file=$git_dir/claude-watch.lock
 prev_file=$git_dir/claude-watch.prev
+beat_file=$git_dir/claude-watch.beat
 touch "$seen_file"
 
+self_sum=$(sha1sum "$0" | cut -d' ' -f1)
+beat() { printf '%s %s %s\n' "$(date +%s)" "$$" "$self_sum" >"$beat_file"; }
+
+# A watcher that is wedged, or running a script that has since been replaced, is
+# worse than none: it holds the lock while hearing nothing. Take over from one.
 exec 9>"$lock_file"
 if ! flock -n 9; then
-    echo "another claude-watch is already polling this repo; not starting a second one."
-    exit 0
+    read -r when holder sum <"$beat_file" 2>/dev/null || true
+    age=$(( $(date +%s) - ${when:-0} ))
+    if [[ -n ${holder:-} ]] && kill -0 "$holder" 2>/dev/null; then
+        if (( age <= 3 * poll )) && [[ ${sum:-} == "$self_sum" ]]; then
+            echo "another claude-watch (pid $holder) is polling this repo on this same script, last poll ${age}s ago; not starting a second one."
+            exit 0
+        fi
+        if [[ ${sum:-} != "$self_sum" ]]; then
+            echo "taking over from claude-watch pid $holder: it is running a script that has since changed."
+        else
+            echo "taking over from claude-watch pid $holder: its last poll was ${age}s ago, past $((3 * poll))s."
+        fi
+        # SIGCONT too: a stopped holder would never act on the TERM, and it
+        # keeps the lock until it actually exits.
+        kill "$holder" 2>/dev/null
+        kill -CONT "$holder" 2>/dev/null
+        for _ in 1 2 3 4 5; do
+            kill -0 "$holder" 2>/dev/null || break
+            sleep 1
+        done
+        kill -0 "$holder" 2>/dev/null && kill -9 "$holder" 2>/dev/null
+    fi
+    if ! flock -w 15 9; then
+        echo "could not take the claude-watch lock."
+        echo "FIRST start this watcher again (Bash, run_in_background: bash $0 $poll), THEN tell the human."
+        exit 1
+    fi
 fi
+beat
 
 : >"$prev_file"
 backoff=$poll
@@ -83,6 +115,14 @@ while true; do
         exit 1
     fi
     backoff=$poll
+
+    # Pick up a new version of this script rather than keep running the old one.
+    if [[ $(sha1sum "$0" | cut -d' ' -f1) != "$self_sum" ]]; then
+        echo "this watcher script changed on disk; the running copy is out of date."
+        echo "FIRST start this watcher again (Bash, run_in_background: bash $0 $poll), THEN carry on."
+        exit 0
+    fi
+    beat
 
     cur=$(extract)
     # Report a comment only once it has been byte-identical for $quiet polls in a

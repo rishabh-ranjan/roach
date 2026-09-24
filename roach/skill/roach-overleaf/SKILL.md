@@ -133,8 +133,16 @@ The watcher is deliberately slow and quiet:
 - A comment is reported only when its text has been unchanged for two polls in
   a row, and never while its `{` is still unclosed. Both mean a comment being
   typed in the web editor does not reach you half-written.
-- `flock` keeps one poller per repo. Do not run a second watcher, and do not add
-  your own `git fetch` or `git pull` polling loop beside it.
+- `flock` keeps one poller per repo, but a watcher that is wedged or running a
+  script since replaced is worse than none, since it holds the lock and hears
+  nothing. So it exits on its own once the script changes on disk, and a new
+  instance takes the lock from a holder that has stopped polling or is running
+  an older copy. Do not run a second watcher yourself, and do not add your own
+  `git fetch` or `git pull` polling loop beside it.
+- Starting it is therefore always safe, and its answer is worth reading. Only
+  `another claude-watch (pid N) is polling this repo on this same script` means
+  one is genuinely live; anything else is it taking over or saying why it could
+  not.
 - Overleaf rate-limits its git endpoint per project. Exceeding it breaks
   `git pull` and `git push` for several minutes, for you *and* for the authors'
   sync. The watcher backs off to 15 minutes when it sees `Rate-limit exceeded`
