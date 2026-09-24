@@ -25,19 +25,40 @@ extract() {
 import re, sys
 f = sys.argv[1]
 s = sys.stdin.read()
-for m in re.finditer(r"@claude\{", s, re.I):
+for m in re.finditer(r"@claude", s, re.I):
     i = m.end()
-    depth = 1
-    while i < len(s) and depth:
-        if s[i] == "{":
-            depth += 1
-        elif s[i] == "}":
-            depth -= 1
+    while i < len(s) and s[i] == " ":
         i += 1
-    if depth:
-        continue
-    body = " ".join(s[m.end():i - 1].split())
-    print(f"{f}\t{s.count(chr(10), 0, m.start()) + 1}\t{body}")
+    if i < len(s) and s[i] == "{":
+        # @claude{...}: the comment is the balanced group.
+        i += 1
+        start, depth = i, 1
+        while i < len(s) and depth:
+            if s[i] == "{":
+                depth += 1
+            elif s[i] == "}":
+                depth -= 1
+            i += 1
+        if depth:
+            continue
+        end = i - 1
+    else:
+        # \rishabh{@claude ...}: the comment runs to the end of the macro.
+        start, depth = i, 0
+        while i < len(s):
+            if s[i] == "{":
+                depth += 1
+            elif s[i] == "}":
+                if not depth:
+                    break
+                depth -= 1
+            i += 1
+        else:
+            continue
+        end = i
+    body = " ".join(s[start:end].split())
+    if body:
+        print(f"{f}\t{s.count(chr(10), 0, m.start()) + 1}\t{body}")
 ' "$f"
     done
 }
