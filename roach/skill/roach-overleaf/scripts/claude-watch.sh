@@ -13,16 +13,32 @@ beat() { printf '%s %s %s\n' "$(date +%s)" "$$" "$self_sum" >"$beat_file"; }
 
 # A watcher that is wedged, or running a script that has since been replaced, is
 # worse than none: it holds the lock while hearing nothing. Take over from one.
+# The pid holding the lock, for a holder too old to leave a heartbeat.
+lock_holder() {
+    local fd
+    for fd in /proc/[0-9]*/fd/*; do
+        if [[ $(readlink -f "$fd" 2>/dev/null) == "$lock_file" ]]; then
+            fd=${fd#/proc/}
+            echo "${fd%%/*}"
+            return
+        fi
+    done
+}
+
 exec 9>"$lock_file"
 if ! flock -n 9; then
-    read -r when holder sum <"$beat_file" 2>/dev/null || true
+    when= holder= sum=
+    [[ -r $beat_file ]] && read -r when holder sum <"$beat_file"
+    [[ -z ${holder:-} ]] && holder=$(lock_holder)
     age=$(( $(date +%s) - ${when:-0} ))
     if [[ -n ${holder:-} ]] && kill -0 "$holder" 2>/dev/null; then
         if (( age <= 3 * poll )) && [[ ${sum:-} == "$self_sum" ]]; then
             echo "another claude-watch (pid $holder) is polling this repo on this same script, last poll ${age}s ago; not starting a second one."
             exit 0
         fi
-        if [[ ${sum:-} != "$self_sum" ]]; then
+        if [[ -z ${sum:-} ]]; then
+            echo "taking over from claude-watch pid $holder: it leaves no heartbeat, so it predates this script."
+        elif [[ ${sum:-} != "$self_sum" ]]; then
             echo "taking over from claude-watch pid $holder: it is running a script that has since changed."
         else
             echo "taking over from claude-watch pid $holder: its last poll was ${age}s ago, past $((3 * poll))s."
