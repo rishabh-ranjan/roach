@@ -1,18 +1,37 @@
 #!/bin/bash
+# Watch an Overleaf clone for @claude comments and exit as soon as one settles.
+#
+# Pacing: a cheap ls-remote probe asks whether anything changed at all, and only
+# a change costs a real fetch. While someone is typing, probes go fast; after a
+# quiet stretch they slow down. A token bucket caps the hour, because exceeding
+# Overleaf's git rate limit breaks pull and push for the authors too.
 set -uo pipefail
-poll=${1:-60}
+
+FAST=${CLAUDE_WATCH_FAST:-4}      # seconds between probes right after any change
+MID=${CLAUDE_WATCH_MID:-12}       # seconds between probes for the rest of the live window
+SLOW=${CLAUDE_WATCH_SLOW:-45}     # seconds between probes once it has gone quiet
+HOT=${CLAUDE_WATCH_HOT:-60}       # a change keeps the project "hot" this long
+LIVE=${CLAUDE_WATCH_LIVE:-240}    # and "live" this long
+SETTLE=${CLAUDE_WATCH_SETTLE:-6}  # a comment must hold this long before it fires
+BUDGET=${CLAUDE_WATCH_BUDGET:-150} # most requests to Overleaf per rolling hour
+
 git_dir=$(git rev-parse --absolute-git-dir) || exit 1
 seen_file=$git_dir/claude-watch.seen
 lock_file=$git_dir/claude-watch.lock
-prev_file=$git_dir/claude-watch.prev
 beat_file=$git_dir/claude-watch.beat
+rate_file=$git_dir/claude-watch.rate
 touch "$seen_file"
+
+upstream=$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null) || {
+    echo "no upstream branch to watch."
+    exit 1
+}
+remote=${upstream%%/*}
+branch=${upstream#*/}
 
 self_sum=$(sha1sum "$0" | cut -d' ' -f1)
 beat() { printf '%s %s %s\n' "$(date +%s)" "$$" "$self_sum" >"$beat_file"; }
 
-# A watcher that is wedged, or running a script that has since been replaced, is
-# worse than none: it holds the lock while hearing nothing. Take over from one.
 # The pid holding the lock, for a holder too old to leave a heartbeat.
 lock_holder() {
     local fd
@@ -25,6 +44,8 @@ lock_holder() {
     done
 }
 
+# A watcher that is wedged, or running a script that has since been replaced, is
+# worse than none: it holds the lock while hearing nothing. Take over from one.
 exec 9>"$lock_file"
 for attempt in 1 2 3; do
     flock -n 9 && break
@@ -33,12 +54,11 @@ for attempt in 1 2 3; do
     [[ -z ${holder:-} ]] || kill -0 "$holder" 2>/dev/null || holder=
     [[ -z ${holder:-} ]] && holder=$(lock_holder)
     if [[ -z ${holder:-} ]]; then
-        # Nobody owns it any more; the lock is about to come free.
         flock -w 10 9 && break
         continue
     fi
     age=$(( $(date +%s) - ${when:-0} ))
-    if (( age <= 3 * poll )) && [[ ${sum:-} == "$self_sum" ]]; then
+    if (( age <= 3 * SLOW )) && [[ ${sum:-} == "$self_sum" ]]; then
         echo "another claude-watch (pid $holder) is polling this repo on this same script, last poll ${age}s ago; not starting a second one."
         exit 0
     fi
@@ -47,7 +67,7 @@ for attempt in 1 2 3; do
     elif [[ ${sum:-} != "$self_sum" ]]; then
         echo "taking over from claude-watch pid $holder: it is running a script that has since changed."
     else
-        echo "taking over from claude-watch pid $holder: its last poll was ${age}s ago, past $((3 * poll))s."
+        echo "taking over from claude-watch pid $holder: its last poll was ${age}s ago, past $((3 * SLOW))s."
     fi
     # SIGCONT too: a stopped holder would never act on the TERM, and it keeps
     # the lock until it actually exits.
@@ -62,16 +82,19 @@ for attempt in 1 2 3; do
 done
 if ! flock -n 9 && ! flock -w 5 9; then
     echo "could not take the claude-watch lock; something is still holding it."
-    echo "FIRST start this watcher again (Bash, run_in_background: bash $0 $poll), THEN tell the human."
+    echo "FIRST start this watcher again (Bash, run_in_background: bash $0), THEN tell the human."
     exit 1
 fi
 beat
 
-: >"$prev_file"
-backoff=$poll
-stable=0
-# Number of consecutive unchanged polls before a comment is reported.
-quiet=${CLAUDE_WATCH_QUIET:-2}
+# Requests in the trailing hour, one timestamp per line.
+spend() { date +%s >>"$rate_file"; }
+spent() {
+    local cutoff=$(( $(date +%s) - 3600 ))
+    [[ -s $rate_file ]] || { echo 0; return; }
+    awk -v c="$cutoff" '$1 >= c' "$rate_file" >"$rate_file.new" && mv "$rate_file.new" "$rate_file"
+    wc -l <"$rate_file"
+}
 
 extract() {
     git ls-tree -r --name-only '@{u}' | grep -i '\.tex$' | while IFS= read -r f; do
@@ -123,38 +146,24 @@ blame_author() {
         sed -n 's/^author //p' | head -1
 }
 
-while true; do
-    err=$(git fetch -q 2>&1)
-    if [[ -n $err ]] && grep -qi 'rate-limit\|no git access' <<<"$err"; then
-        backoff=$((backoff * 2))
-        (( backoff > 900 )) && backoff=900
-        sleep "$backoff"
-        continue
-    fi
-    if [[ -n $err ]] && ! git rev-parse -q --verify '@{u}' >/dev/null; then
-        echo "cannot reach the upstream branch: $err"
-        echo "FIRST start this watcher again (Bash, run_in_background: bash $0 $poll), THEN tell the human."
-        exit 1
-    fi
-    backoff=$poll
+now=$(date +%s)
+head_sha=$(git rev-parse '@{u}')
+cur=$(extract)
+changed_at=$now      # when the comment text last changed
+live_at=$now         # when the project last changed; a start counts, since
+                     # the watcher is started when the authors are about to edit
+backoff=0
 
-    # Pick up a new version of this script rather than keep running the old one.
+while true; do
+    beat
     if [[ $(sha1sum "$0" | cut -d' ' -f1) != "$self_sum" ]]; then
         echo "this watcher script changed on disk; the running copy is out of date."
-        echo "FIRST start this watcher again (Bash, run_in_background: bash $0 $poll), THEN carry on."
+        echo "FIRST start this watcher again (Bash, run_in_background: bash $0), THEN carry on."
         exit 0
     fi
-    beat
 
-    cur=$(extract)
-    # Report a comment only once it has been byte-identical for $quiet polls in a
-    # row, so a comment still being typed in the web editor never fires half-written.
-    if [[ $cur == "$(cat "$prev_file")" ]]; then
-        stable=$((stable + 1))
-    else
-        stable=0
-    fi
-    if (( stable >= quiet )); then
+    now=$(date +%s)
+    if (( now - changed_at >= SETTLE )); then
         new=""
         while IFS=$'\t' read -r file line body; do
             [[ -z ${file:-} ]] && continue
@@ -166,10 +175,42 @@ while true; do
         if [[ -n $new ]]; then
             cut -f1,3- <<<"$cur" >"$seen_file"
             printf '%s' "$new"
-            echo "FIRST start this watcher again (Bash, run_in_background: bash $0 $poll), THEN address the comments."
+            echo "Your clone is already fetched: merge with 'git merge --ff-only @{u}', not 'git pull', which would spend another request."
+            echo "FIRST start this watcher again (Bash, run_in_background: bash $0), THEN address the comments."
             exit 0
         fi
     fi
-    printf '%s' "$cur" >"$prev_file"
-    sleep "$poll"
+
+    if (( backoff )); then
+        sleep "$backoff"
+    elif (( $(spent) >= BUDGET )); then
+        sleep "$SLOW"
+    elif (( now - live_at < HOT )); then
+        sleep "$FAST"
+    elif (( now - live_at < LIVE )); then
+        sleep "$MID"
+    else
+        sleep "$SLOW"
+    fi
+
+    spend
+    probe=$(git ls-remote "$remote" "refs/heads/$branch" 2>&1)
+    if grep -qi 'rate-limit\|no git access' <<<"$probe"; then
+        backoff=$(( backoff ? backoff * 2 : SLOW ))
+        (( backoff > 900 )) && backoff=900
+        continue
+    fi
+    backoff=0
+    sha=${probe%%$'\t'*}
+    [[ -z $sha || $sha == "$head_sha" ]] && continue
+
+    live_at=$(date +%s)
+    spend
+    git fetch -q "$remote" "$branch" 2>/dev/null || continue
+    head_sha=$(git rev-parse '@{u}')
+    fresh=$(extract)
+    if [[ $fresh != "$cur" ]]; then
+        cur=$fresh
+        changed_at=$(date +%s)
+    fi
 done

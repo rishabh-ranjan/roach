@@ -117,43 +117,57 @@ a Bash command with `run_in_background`, from the repo root. Never start it
 unasked, and not merely because this skill loaded:
 
 ```bash
-bash .claude/skills/roach-overleaf/scripts/claude-watch.sh      # [poll-seconds], default 60
+bash .claude/skills/roach-overleaf/scripts/claude-watch.sh
 ```
 
-It polls until there is something to say: it fetches, never touching the working
-tree, and prints one `NEW <file>:<line> by <author>: <comment>` line per comment
-it has not reported before, then exits. The author is who to address in a reply. Its exit is what wakes you, and its last line tells
-you to start it again. It remembers what it reported in `.git/claude-watch.seen`,
-so a comment you left in place does not fire again.
+It polls until there is something to say, never touching the working tree, then
+prints one `NEW <file>:<line> by <author>: <comment>` line per comment it has
+not reported before and exits. The author is who to address in a reply. Its exit
+is what wakes you, and its last lines tell you what to do next. It remembers what
+it reported in `.git/claude-watch.seen`, so a comment you left in place does not
+fire again.
 
-The watcher is deliberately slow and quiet:
+It aims to reach you about ten seconds after the author stops typing, without
+ever reading a comment half-written:
 
+- Each poll is a `git ls-remote` for one ref, which asks only whether anything
+  changed. A real `git fetch` happens on a change, so an idle project costs the
+  lightest request there is.
+- Pace follows the project. For a minute after any change it probes every 4s,
+  for three more minutes every 12s, and once quiet every 45s. Starting the
+  watcher counts as a change, since it is started when the authors are about to
+  work, so the first comment of a session is caught at the fast rate too.
+- A comment fires once its text has held still for 6s, and never while its `{`
+  is unclosed. Between them, an author typing a comment over several minutes
+  wakes you once, with the finished text.
+- A token bucket caps requests at 150 an hour; past that the pace drops to the
+  idle rate whatever else is happening. This matters: exceeding Overleaf's git
+  rate limit breaks `pull` and `push` for several minutes, for you *and* for
+  the authors' editor sync. The watcher also backs off to 15 minutes when it
+  sees `Rate-limit exceeded` or `no git access`. Never poll beside it, and
+  never add your own `git fetch` or `git pull` loop.
+- Every interval is an environment variable (`CLAUDE_WATCH_FAST`, `MID`,
+  `SLOW`, `HOT`, `LIVE`, `SETTLE`, `BUDGET`) for the rare case one needs
+  changing. A positional argument is no longer a poll interval.
 - A comment is tracked by its file and text, not its line, so a paragraph added
   above one does not make it look new.
-- A comment is reported only when its text has been unchanged for two polls in
-  a row, and never while its `{` is still unclosed. Both mean a comment being
-  typed in the web editor does not reach you half-written.
 - `flock` keeps one poller per repo, but a watcher that is wedged or running a
   script since replaced is worse than none, since it holds the lock and hears
   nothing. So it exits on its own once the script changes on disk, and a new
   instance takes the lock from a holder that has stopped polling or is running
-  an older copy. Do not run a second watcher yourself, and do not add your own
-  `git fetch` or `git pull` polling loop beside it.
+  an older copy. Do not run a second watcher yourself.
 - Starting it is therefore always safe, and its answer is worth reading. Only
   `another claude-watch (pid N) is polling this repo on this same script` means
   one is genuinely live; anything else is it taking over or saying why it could
   not.
-- Overleaf rate-limits its git endpoint per project. Exceeding it breaks
-  `git pull` and `git push` for several minutes, for you *and* for the authors'
-  sync. The watcher backs off to 15 minutes when it sees `Rate-limit exceeded`
-  or `no git access`. Keep the poll at 60s or slower, and never poll in
-  parallel with it.
 
 When it exits, the first thing you do, before reading anything, is start it
 again the same way (the human's request covers restarts until they say stop).
-Only then: `git pull`, read each comment in full in the file (a comment may span
-lines and may sit mid-sentence), address it under the rules above, build, commit,
-push, and say nothing anywhere unless a `\claude{}` note is truly earned.
+Then `git merge --ff-only @{u}`, not `git pull`: the watcher fetched seconds
+ago, so the commit is already local and a pull would only spend another request
+against the limit. Read each comment in full in the file (one may span lines and
+may sit mid-sentence), address it under the rules above, build, commit, push,
+and say nothing anywhere unless a `\claude{}` note is truly earned.
 
 Address each one, then delete that comment and only that comment. Every other
 author comment stays, including ones you believe are resolved, unless the human
