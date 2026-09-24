@@ -26,38 +26,44 @@ lock_holder() {
 }
 
 exec 9>"$lock_file"
-if ! flock -n 9; then
+for attempt in 1 2 3; do
+    flock -n 9 && break
     when= holder= sum=
     [[ -r $beat_file ]] && read -r when holder sum <"$beat_file"
+    [[ -z ${holder:-} ]] || kill -0 "$holder" 2>/dev/null || holder=
     [[ -z ${holder:-} ]] && holder=$(lock_holder)
+    if [[ -z ${holder:-} ]]; then
+        # Nobody owns it any more; the lock is about to come free.
+        flock -w 10 9 && break
+        continue
+    fi
     age=$(( $(date +%s) - ${when:-0} ))
-    if [[ -n ${holder:-} ]] && kill -0 "$holder" 2>/dev/null; then
-        if (( age <= 3 * poll )) && [[ ${sum:-} == "$self_sum" ]]; then
-            echo "another claude-watch (pid $holder) is polling this repo on this same script, last poll ${age}s ago; not starting a second one."
-            exit 0
-        fi
-        if [[ -z ${sum:-} ]]; then
-            echo "taking over from claude-watch pid $holder: it leaves no heartbeat, so it predates this script."
-        elif [[ ${sum:-} != "$self_sum" ]]; then
-            echo "taking over from claude-watch pid $holder: it is running a script that has since changed."
-        else
-            echo "taking over from claude-watch pid $holder: its last poll was ${age}s ago, past $((3 * poll))s."
-        fi
-        # SIGCONT too: a stopped holder would never act on the TERM, and it
-        # keeps the lock until it actually exits.
-        kill "$holder" 2>/dev/null
-        kill -CONT "$holder" 2>/dev/null
-        for _ in 1 2 3 4 5; do
-            kill -0 "$holder" 2>/dev/null || break
-            sleep 1
-        done
-        kill -0 "$holder" 2>/dev/null && kill -9 "$holder" 2>/dev/null
+    if (( age <= 3 * poll )) && [[ ${sum:-} == "$self_sum" ]]; then
+        echo "another claude-watch (pid $holder) is polling this repo on this same script, last poll ${age}s ago; not starting a second one."
+        exit 0
     fi
-    if ! flock -w 15 9; then
-        echo "could not take the claude-watch lock."
-        echo "FIRST start this watcher again (Bash, run_in_background: bash $0 $poll), THEN tell the human."
-        exit 1
+    if [[ -z ${sum:-} ]]; then
+        echo "taking over from claude-watch pid $holder: it leaves no heartbeat, so it predates this script."
+    elif [[ ${sum:-} != "$self_sum" ]]; then
+        echo "taking over from claude-watch pid $holder: it is running a script that has since changed."
+    else
+        echo "taking over from claude-watch pid $holder: its last poll was ${age}s ago, past $((3 * poll))s."
     fi
+    # SIGCONT too: a stopped holder would never act on the TERM, and it keeps
+    # the lock until it actually exits.
+    kill "$holder" 2>/dev/null
+    kill -CONT "$holder" 2>/dev/null
+    for _ in 1 2 3 4 5; do
+        kill -0 "$holder" 2>/dev/null || break
+        sleep 1
+    done
+    kill -0 "$holder" 2>/dev/null && kill -9 "$holder" 2>/dev/null
+    : >"$beat_file"
+done
+if ! flock -n 9 && ! flock -w 5 9; then
+    echo "could not take the claude-watch lock; something is still holding it."
+    echo "FIRST start this watcher again (Bash, run_in_background: bash $0 $poll), THEN tell the human."
+    exit 1
 fi
 beat
 
