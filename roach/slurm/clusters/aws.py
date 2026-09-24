@@ -117,6 +117,26 @@ What the 64-vCPU P quota allows (four of them); `nodes=4` is four cards over
 EFA, not NVLink, and all in one zone. The stopgap until the quota reaches a
 p5.48xlarge. FSx is in 1d; a node in another zone reads it across zones."""
 
+H100_1_SPOT = Resources(
+    partition="h100-1d-spot,h100-1a-spot,h100-1b-spot,h100-1c-spot,h100-1e-spot,h100-1f-spot",
+    account=None,
+    qos=None,
+    time="7-00:00:00",
+    gpus="1",
+    cpus_per_task=16,
+    ntasks=None,
+    exclusive=True,
+    mem=None,
+    mem_per_gpu=None,
+    constraint=None,
+    nodelist=None,
+    reservation=None,
+    dependency=None,
+)
+"""The p5.4xlarge as spot: a different capacity pool from on-demand, which is
+what makes it worth trying when on-demand is dry, and cheaper. Reclaimed with
+two minutes' notice, so only for runs that resume."""
+
 A10G = Resources(
     partition="a10g",
     account=None,

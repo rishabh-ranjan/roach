@@ -152,6 +152,86 @@ Scheduling:
         SubnetIds: [subnet-08826319e60b90dfb]
         PlacementGroup:
           Enabled: true
+    # The same p5.4xlarge as spot: a separate capacity pool from on-demand, and
+    # what the 64-vCPU P spot quota allows. Reclaimed with 120 s notice.
+    - Name: h100-1d-spot
+      CapacityType: SPOT
+      ComputeResources:
+        - Name: p5-4xl
+          InstanceType: p5.4xlarge
+          MinCount: 0
+          MaxCount: 4
+          Efa:
+            Enabled: true
+      Networking:
+        SubnetIds: [subnet-0dc57517de388c39b]
+        PlacementGroup:
+          Enabled: true
+    - Name: h100-1a-spot
+      CapacityType: SPOT
+      ComputeResources:
+        - Name: p5-4xl
+          InstanceType: p5.4xlarge
+          MinCount: 0
+          MaxCount: 4
+          Efa:
+            Enabled: true
+      Networking:
+        SubnetIds: [subnet-0cfd373935a7e13fe]
+        PlacementGroup:
+          Enabled: true
+    - Name: h100-1b-spot
+      CapacityType: SPOT
+      ComputeResources:
+        - Name: p5-4xl
+          InstanceType: p5.4xlarge
+          MinCount: 0
+          MaxCount: 4
+          Efa:
+            Enabled: true
+      Networking:
+        SubnetIds: [subnet-09ef36bfe992170fc]
+        PlacementGroup:
+          Enabled: true
+    - Name: h100-1c-spot
+      CapacityType: SPOT
+      ComputeResources:
+        - Name: p5-4xl
+          InstanceType: p5.4xlarge
+          MinCount: 0
+          MaxCount: 4
+          Efa:
+            Enabled: true
+      Networking:
+        SubnetIds: [subnet-05346e680b6132946]
+        PlacementGroup:
+          Enabled: true
+    - Name: h100-1e-spot
+      CapacityType: SPOT
+      ComputeResources:
+        - Name: p5-4xl
+          InstanceType: p5.4xlarge
+          MinCount: 0
+          MaxCount: 4
+          Efa:
+            Enabled: true
+      Networking:
+        SubnetIds: [subnet-0f561dd1c8d8cec64]
+        PlacementGroup:
+          Enabled: true
+    - Name: h100-1f-spot
+      CapacityType: SPOT
+      ComputeResources:
+        - Name: p5-4xl
+          InstanceType: p5.4xlarge
+          MinCount: 0
+          MaxCount: 4
+          Efa:
+            Enabled: true
+      Networking:
+        SubnetIds: [subnet-08826319e60b90dfb]
+        PlacementGroup:
+          Enabled: true
     - Name: a10g
       CapacityType: ONDEMAND
       ComputeResources:
