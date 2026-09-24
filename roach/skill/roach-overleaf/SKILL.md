@@ -127,30 +127,38 @@ is what wakes you, and its last lines tell you what to do next. It remembers wha
 it reported in `.git/claude-watch.seen`, so a comment you left in place does not
 fire again.
 
-It aims to reach you about ten seconds after the author stops typing, without
-ever reading a comment half-written:
+It aims to reach you within a few seconds of the keystroke that closes the
+comment, and never to sit on one:
 
 - Each poll is a `git ls-remote` for one ref, which asks only whether anything
-  changed. A real `git fetch` happens on a change, so an idle project costs the
-  lightest request there is.
-- Pace follows the project. For a minute after any change it probes every 4s,
-  for three more minutes every 12s, and once quiet every 45s. Starting the
-  watcher counts as a change, since it is started when the authors are about to
-  work, so the first comment of a session is caught at the fast rate too.
-- A comment fires once its text has held still for 6s, and never while its `{`
-  is unclosed. Between them, an author typing a comment over several minutes
-  wakes you once, with the finished text.
-- A token bucket caps requests at 150 an hour; past that the pace drops to the
-  idle rate whatever else is happening. This matters: exceeding Overleaf's git
-  rate limit breaks `pull` and `push` for several minutes, for you *and* for
-  the authors' editor sync. The watcher also backs off to 15 minutes when it
-  sees `Rate-limit exceeded` or `no git access`. Never poll beside it, and
-  never add your own `git fetch` or `git pull` loop.
+  changed. A real `git fetch` happens on a change, so probing is the lightest
+  request there is. Measured on Overleaf: 60 probes a minute ran clean, as did
+  400 an hour sustained, while it was two `git fetch` loops at 300 an hour that
+  tripped the limit. Probes are cheap; fetches are not.
+- Probes run every 2s for two minutes after any change, every 4s for the rest
+  of ten minutes, and every 8s when the project has been still for longer. The
+  worst case is therefore a few seconds, not a cold wait.
+- A comment fires the moment it is well-formed, with no settling delay. It
+  never fires while its `{` is unclosed, which is what keeps a half-typed
+  comment from reaching you at all.
+- Because it does not wait for the author to finish, **check the comment again
+  before you push**. Merge upstream as usual, then compare the comment in the
+  file against the text the watcher reported. If it grew, redo the work for the
+  new text before pushing. If it is gone, drop your edit. Acting on a stale
+  version costs one retry; waiting for certainty would cost every comment
+  several minutes.
+- A token bucket caps requests at 600 an hour; past that the pace drops to the
+  idle rate whatever else is happening. Exceeding Overleaf's git rate limit
+  breaks `pull` and `push` for several minutes, for you *and* for the authors'
+  editor sync. The watcher also backs off to 15 minutes when it sees
+  `Rate-limit exceeded` or `no git access`. Never poll beside it, and never add
+  your own `git fetch` or `git pull` loop.
 - Every interval is an environment variable (`CLAUDE_WATCH_FAST`, `MID`,
   `SLOW`, `HOT`, `LIVE`, `SETTLE`, `BUDGET`) for the rare case one needs
   changing. A positional argument is no longer a poll interval.
 - A comment is tracked by its file and text, not its line, so a paragraph added
-  above one does not make it look new.
+  above one does not make it look new, while an edit to the comment itself is
+  correctly a new one.
 - `flock` keeps one poller per repo, but a watcher that is wedged or running a
   script since replaced is worse than none, since it holds the lock and hears
   nothing. So it exits on its own once the script changes on disk, and a new
@@ -166,8 +174,9 @@ again the same way (the human's request covers restarts until they say stop).
 Then `git merge --ff-only @{u}`, not `git pull`: the watcher fetched seconds
 ago, so the commit is already local and a pull would only spend another request
 against the limit. Read each comment in full in the file (one may span lines and
-may sit mid-sentence), address it under the rules above, build, commit, push,
-and say nothing anywhere unless a `\claude{}` note is truly earned.
+may sit mid-sentence), address it under the rules above, build, re-check the
+comment text as above, commit, push, and say nothing anywhere unless a
+`\claude{}` note is truly earned.
 
 Address each one, then delete that comment and only that comment. Every other
 author comment stays, including ones you believe are resolved, unless the human

@@ -2,18 +2,23 @@
 # Watch an Overleaf clone for @claude comments and exit as soon as one settles.
 #
 # Pacing: a cheap ls-remote probe asks whether anything changed at all, and only
-# a change costs a real fetch. While someone is typing, probes go fast; after a
-# quiet stretch they slow down. A token bucket caps the hour, because exceeding
-# Overleaf's git rate limit breaks pull and push for the authors too.
+# a change costs a real fetch. Probes run every few seconds whatever the project
+# is doing, so there is no cold wait; a token bucket caps the hour, because
+# exceeding Overleaf's git rate limit breaks pull and push for the authors too.
+#
+# A comment fires the moment it is well-formed, without waiting for the author
+# to stop typing. If they keep going, the text changes and it fires again; the
+# work done on the earlier text is checked against the current one before it is
+# pushed. Latency is what matters here, not doing the work exactly once.
 set -uo pipefail
 
-FAST=${CLAUDE_WATCH_FAST:-4}      # seconds between probes right after any change
-MID=${CLAUDE_WATCH_MID:-12}       # seconds between probes for the rest of the live window
-SLOW=${CLAUDE_WATCH_SLOW:-45}     # seconds between probes once it has gone quiet
-HOT=${CLAUDE_WATCH_HOT:-60}       # a change keeps the project "hot" this long
-LIVE=${CLAUDE_WATCH_LIVE:-240}    # and "live" this long
-SETTLE=${CLAUDE_WATCH_SETTLE:-6}  # a comment must hold this long before it fires
-BUDGET=${CLAUDE_WATCH_BUDGET:-150} # most requests to Overleaf per rolling hour
+FAST=${CLAUDE_WATCH_FAST:-2}      # seconds between probes right after any change
+MID=${CLAUDE_WATCH_MID:-4}        # seconds between probes for the rest of the live window
+SLOW=${CLAUDE_WATCH_SLOW:-8}      # seconds between probes once it has gone quiet
+HOT=${CLAUDE_WATCH_HOT:-120}      # a change keeps the project "hot" this long
+LIVE=${CLAUDE_WATCH_LIVE:-600}    # and "live" this long
+SETTLE=${CLAUDE_WATCH_SETTLE:-0}  # extra seconds a comment must hold still first
+BUDGET=${CLAUDE_WATCH_BUDGET:-600} # most requests to Overleaf per rolling hour
 
 git_dir=$(git rev-parse --absolute-git-dir) || exit 1
 seen_file=$git_dir/claude-watch.seen
@@ -146,6 +151,27 @@ blame_author() {
         sed -n 's/^author //p' | head -1
 }
 
+# Report anything new and stop; the exit is what wakes Claude.
+report_if_new() {
+    (( $(date +%s) - changed_at < SETTLE )) && return
+    local new="" file line body
+    new=""
+    while IFS=$'\t' read -r file line body; do
+        [[ -z ${file:-} ]] && continue
+        # Keyed on file and text, not line: a paragraph added above a comment
+        # must not make it look new.
+        grep -qxF -- "$file"$'\t'"$body" "$seen_file" && continue
+        new+="NEW $file:$line by $(blame_author "$file" "$line"): $body"$'\n'
+    done <<<"$cur"
+    [[ -z $new ]] && return
+    cut -f1,3- <<<"$cur" >"$seen_file"
+    printf '%s' "$new"
+    echo "Your clone is already fetched: merge with 'git merge --ff-only @{u}', not 'git pull', which would spend another request."
+    echo "This fired the moment the comment was well-formed, so the author may still be typing: before you push, check the comment still reads as above."
+    echo "FIRST start this watcher again (Bash, run_in_background: bash $0), THEN address the comments."
+    exit 0
+}
+
 now=$(date +%s)
 head_sha=$(git rev-parse '@{u}')
 cur=$(extract)
@@ -156,6 +182,7 @@ backoff=0
 
 while true; do
     beat
+    report_if_new
     if [[ $(sha1sum "$0" | cut -d' ' -f1) != "$self_sum" ]]; then
         echo "this watcher script changed on disk; the running copy is out of date."
         echo "FIRST start this watcher again (Bash, run_in_background: bash $0), THEN carry on."
@@ -163,24 +190,6 @@ while true; do
     fi
 
     now=$(date +%s)
-    if (( now - changed_at >= SETTLE )); then
-        new=""
-        while IFS=$'\t' read -r file line body; do
-            [[ -z ${file:-} ]] && continue
-            # Keyed on file and text, not line: a paragraph added above a
-            # comment must not make it look new.
-            grep -qxF -- "$file"$'\t'"$body" "$seen_file" && continue
-            new+="NEW $file:$line by $(blame_author "$file" "$line"): $body"$'\n'
-        done <<<"$cur"
-        if [[ -n $new ]]; then
-            cut -f1,3- <<<"$cur" >"$seen_file"
-            printf '%s' "$new"
-            echo "Your clone is already fetched: merge with 'git merge --ff-only @{u}', not 'git pull', which would spend another request."
-            echo "FIRST start this watcher again (Bash, run_in_background: bash $0), THEN address the comments."
-            exit 0
-        fi
-    fi
-
     if (( backoff )); then
         sleep "$backoff"
     elif (( $(spent) >= BUDGET )); then
@@ -212,5 +221,6 @@ while true; do
     if [[ $fresh != "$cur" ]]; then
         cur=$fresh
         changed_at=$(date +%s)
+        report_if_new
     fi
 done
