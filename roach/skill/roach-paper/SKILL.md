@@ -66,13 +66,29 @@ looked at is not done. Save PDF, never PNG, for anything LaTeX includes.
 **Look at it at high resolution.** A whole-figure render is downsampled
 before you see it, which hides the defects that matter: baselines of small
 caps, subscripts spilling out of shapes, touching glyphs, 1 to 2 px overlaps,
-misaligned arrowheads. Rasterize the PDF at 600 dpi or more
-(`pdftoppm -r 600 -png -singlefile fig.pdf /tmp/fig`) and read it in tiles
-of about 1100 px on the long side (a 5.5 in figure at 600 dpi is a 3 × 2
-grid), every tile, after every change. Judge defects from the tiles, never
-from the downsampled whole. For a check whose answer is a number (a gap, a
-padding, an overflow), measure it in code (text bounding boxes from the
-browser for diagrams, `get_window_extent` for matplotlib) rather than by eye.
+misaligned arrowheads, holes and seams where two shapes join. Rasterize the
+PDF itself at 600 dpi or more
+(`pdftoppm -r 600 -png -singlefile fig.pdf /tmp/fig`), never a browser
+screenshot of the HTML; if `pdftoppm` is missing, add `poppler` to the pixi
+environment rather than falling back. Judge defects from the tiles, never
+from the downsampled whole.
+
+- After the first render and after any structural change (layout, a new
+  element, a moved panel), read every tile of about 1100 px on the long side
+  (a 5.5 in figure at 600 dpi is a 3 × 2 grid).
+- After a local edit, read only the tiles covering what changed, plus a crop
+  of 8× or more of every join the edit touched: arrowheads on shafts, shapes
+  abutting shapes, lines meeting borders. Check for holes, seams and corners
+  poking out.
+
+For a check whose answer is a number (a gap, a padding, an overflow, whether
+two parts that should touch do), measure it in code (text bounding boxes from
+the browser for diagrams, `get_window_extent` for matplotlib) rather than by
+eye.
+
+**A defect you saw is a defect you fix.** Never report a visible flaw as
+minor, barely visible, or fixable on request. Fix it, re-render and look
+again before replying. Ask only when the fix needs a design decision.
 
 ## A. Plots (matplotlib)
 
@@ -137,6 +153,11 @@ paper.html_to_pdf("figures/intro/overview.dc.html", "figures/intro/overview.pdf"
   falls back to the system sans; the PDF is what gets reviewed.
 - Colors come from `paper.shades` on the role constants, named in one dict
   at the top of the generator; the markup refers to names, never hex.
+- Draw each shape as one closed filled outline (an arrow is a single polygon,
+  shaft and head together), not as overlapping strokes whose ends are placed
+  by hand. Where pieces must overlap, put them in one group carrying the
+  opacity and overlap them generously; never let two fills meet exactly at
+  an edge, which antialiases into a visible seam.
 - The rest of section 0 applies unchanged: role colors, the review loop, PDF
   output at the slot width.
 
