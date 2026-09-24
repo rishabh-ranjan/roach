@@ -36,6 +36,8 @@ boot), and ParallelCluster terminates it 5 minutes after it goes idle.
 | `h100-spot` | p5.48xlarge | same | | | spot, reclaimed with 120 s notice |
 | `a100` | p4d.24xlarge | 8 x A100-40G | 96 | 1.1 TB | on demand, ~$33/h |
 | `a100-spot` | p4d.24xlarge | same | | | spot |
+| `h100-1{a..f}` | p5.4xlarge | 1 x H100-80G | 16 | 256 GB | on demand, ~$7.5/h; one queue per AZ |
+| `h100-1{a..f}-spot` | p5.4xlarge | same | | | spot, a separate capacity pool; 120 s notice |
 | `a10g` | g5.2xlarge | 1 x A10G-24G | 8 | 32 GB | on demand, ~$1.2/h; probes and debugging, 1 node |
 
 Up to 4 nodes per queue (`MaxCount` in `cluster.yaml`; raise it and the EC2
@@ -99,3 +101,21 @@ roach/slurm/clusters/aws/pcluster.sh status | create | update | setup | delete
 node's login at `/fsx` and `/opt/slurm/bin`, then prints the ssh alias to
 put in `~/.ssh/config`. Quota increases (P-instance on-demand and spot vCPUs,
 `L-417A185B` / `L-7212CCBC`) are filed in Service Quotas and take days.
+
+## Quotas and the capacity shortage (2026-09-23)
+
+us-east-1: P on-demand 64 vCPUs, P spot 64, G 8, Concurrent P5 Capacity
+Blocks 1. A p5.48xlarge needs 192 vCPUs and a p4d 96, so 64 fits only four
+p5.4xlarge (16 vCPUs each).
+
+**p5.4xlarge has returned InsufficientInstanceCapacity in every us-east-1 AZ,
+on demand and on spot, continuously since 2026-09-11.** No GPU node has
+launched. A Capacity Block is reserved capacity and is the way around that,
+but the fellowship credits cannot buy one yet: the program told Fellows on
+2026-09-23 not to attempt it and promised a fix in "a few weeks". **Do not
+buy a Capacity Block until that is confirmed** -- it bills real money, not
+credits.
+
+Two one-GPU probe jobs sit queued on `h100-1*` and `h100-1*-spot` as a free
+capacity watcher: they cost nothing while pending and start the moment EC2
+has a node.
