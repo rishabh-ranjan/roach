@@ -127,17 +127,20 @@ is what wakes you, and its last lines tell you what to do next. It remembers wha
 it reported in `.git/claude-watch.seen`, so a comment you left in place does not
 fire again.
 
-It aims to reach you within a few seconds of the keystroke that closes the
-comment, and never to sit on one:
+It aims to reach you within a couple of seconds of the keystroke that closes the
+comment:
 
 - Each poll is a `git ls-remote` for one ref, which asks only whether anything
   changed. A real `git fetch` happens on a change, so probing is the lightest
-  request there is. Measured on Overleaf: 60 probes a minute ran clean, as did
-  400 an hour sustained, while it was two `git fetch` loops at 300 an hour that
-  tripped the limit. Probes are cheap; fetches are not.
-- Probes run every 2s for two minutes after any change, every 4s for the rest
-  of ten minutes, and every 8s when the project has been still for longer. The
-  worst case is therefore a few seconds, not a cold wait.
+  request there is. Measured on Overleaf: a probe every 2s ran clean for three
+  minutes straight, 60 probes in a minute ran clean, and 400 an hour sustained
+  ran clean. It was two `git fetch` loops at 300 an hour that tripped the limit.
+  Probes are cheap; fetches are not.
+- So there is one rate, a probe every 2s, with no slow tier and no cold wait.
+  It can afford that because it runs only while nobody is acting on a comment:
+  it exits on the first report, and is started again after that work is pushed.
+  Probing through the minutes you spend editing would be pure waste, since a
+  comment arriving then could not be picked up any sooner anyway.
 - A comment fires the moment it is well-formed, with no settling delay. It
   never fires while its `{` is unclosed, which is what keeps a half-typed
   comment from reaching you at all.
@@ -147,15 +150,14 @@ comment, and never to sit on one:
   new text before pushing. If it is gone, drop your edit. Acting on a stale
   version costs one retry; waiting for certainty would cost every comment
   several minutes.
-- A token bucket caps requests at 600 an hour; past that the pace drops to the
-  idle rate whatever else is happening. Exceeding Overleaf's git rate limit
-  breaks `pull` and `push` for several minutes, for you *and* for the authors'
-  editor sync. The watcher also backs off to 15 minutes when it sees
+- A token bucket caps requests at 1500 an hour, and past that the probe eases
+  to 8s until the hour drains. Exceeding Overleaf's git rate limit breaks
+  `pull` and `push` for several minutes, for you *and* for the authors' editor
+  sync, so the watcher also backs off to 15 minutes when it sees
   `Rate-limit exceeded` or `no git access`. Never poll beside it, and never add
   your own `git fetch` or `git pull` loop.
-- Every interval is an environment variable (`CLAUDE_WATCH_FAST`, `MID`,
-  `SLOW`, `HOT`, `LIVE`, `SETTLE`, `BUDGET`) for the rare case one needs
-  changing. A positional argument is no longer a poll interval.
+- `CLAUDE_WATCH_PROBE`, `EASE`, `SETTLE` and `BUDGET` change the numbers. A
+  positional argument is not a poll interval.
 - A comment is tracked by its file and text, not its line, so a paragraph added
   above one does not make it look new, while an edit to the comment itself is
   correctly a new one.
@@ -169,14 +171,13 @@ comment, and never to sit on one:
   one is genuinely live; anything else is it taking over or saying why it could
   not.
 
-When it exits, the first thing you do, before reading anything, is start it
-again the same way (the human's request covers restarts until they say stop).
-Then `git merge --ff-only @{u}`, not `git pull`: the watcher fetched seconds
-ago, so the commit is already local and a pull would only spend another request
-against the limit. Read each comment in full in the file (one may span lines and
-may sit mid-sentence), address it under the rules above, build, re-check the
-comment text as above, commit, push, and say nothing anywhere unless a
-`\claude{}` note is truly earned.
+When it exits it has stopped watching, deliberately. Work first: `git merge
+--ff-only @{u}`, not `git pull`, since the watcher fetched seconds ago and the
+commit is already local. Read each comment in full in the file (one may span
+lines and may sit mid-sentence), address it under the rules above, build,
+re-check the comment text as above, commit, push. Then start the watcher again,
+and treat that as part of finishing: a turn that ends with nothing watching is
+an unfinished turn. The human's request covers restarts until they say stop.
 
 Address each one, then delete that comment and only that comment. Every other
 author comment stays, including ones you believe are resolved, unless the human

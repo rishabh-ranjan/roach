@@ -1,10 +1,12 @@
 #!/bin/bash
 # Watch an Overleaf clone for @claude comments and exit as soon as one settles.
 #
-# Pacing: a cheap ls-remote probe asks whether anything changed at all, and only
-# a change costs a real fetch. Probes run every few seconds whatever the project
-# is doing, so there is no cold wait; a token bucket caps the hour, because
-# exceeding Overleaf's git rate limit breaks pull and push for the authors too.
+# Pacing: one cheap ls-remote probe every couple of seconds asks whether
+# anything changed; only a change costs a real fetch. There is no slow tier,
+# because the watcher runs only while nobody is acting on a comment: it exits
+# on the first report and is started again after that work is pushed. A token
+# bucket still caps the hour, because exceeding Overleaf's git rate limit
+# breaks pull and push for the authors too.
 #
 # A comment fires the moment it is well-formed, without waiting for the author
 # to stop typing. If they keep going, the text changes and it fires again; the
@@ -12,13 +14,10 @@
 # pushed. Latency is what matters here, not doing the work exactly once.
 set -uo pipefail
 
-FAST=${CLAUDE_WATCH_FAST:-2}      # seconds between probes right after any change
-MID=${CLAUDE_WATCH_MID:-4}        # seconds between probes for the rest of the live window
-SLOW=${CLAUDE_WATCH_SLOW:-8}      # seconds between probes once it has gone quiet
-HOT=${CLAUDE_WATCH_HOT:-120}      # a change keeps the project "hot" this long
-LIVE=${CLAUDE_WATCH_LIVE:-600}    # and "live" this long
+PROBE=${CLAUDE_WATCH_PROBE:-2}    # seconds between probes
+EASE=${CLAUDE_WATCH_EASE:-8}      # seconds between probes once the budget is spent
 SETTLE=${CLAUDE_WATCH_SETTLE:-0}  # extra seconds a comment must hold still first
-BUDGET=${CLAUDE_WATCH_BUDGET:-600} # most requests to Overleaf per rolling hour
+BUDGET=${CLAUDE_WATCH_BUDGET:-1500} # most requests to Overleaf per rolling hour
 
 git_dir=$(git rev-parse --absolute-git-dir) || exit 1
 seen_file=$git_dir/claude-watch.seen
@@ -63,7 +62,7 @@ for attempt in 1 2 3; do
         continue
     fi
     age=$(( $(date +%s) - ${when:-0} ))
-    if (( age <= 3 * SLOW )) && [[ ${sum:-} == "$self_sum" ]]; then
+    if (( age <= 6 * PROBE + 10 )) && [[ ${sum:-} == "$self_sum" ]]; then
         echo "another claude-watch (pid $holder) is polling this repo on this same script, last poll ${age}s ago; not starting a second one."
         exit 0
     fi
@@ -72,7 +71,7 @@ for attempt in 1 2 3; do
     elif [[ ${sum:-} != "$self_sum" ]]; then
         echo "taking over from claude-watch pid $holder: it is running a script that has since changed."
     else
-        echo "taking over from claude-watch pid $holder: its last poll was ${age}s ago, past $((3 * SLOW))s."
+        echo "taking over from claude-watch pid $holder: its last poll was ${age}s ago, past $((6 * PROBE + 10))s."
     fi
     # SIGCONT too: a stopped holder would never act on the TERM, and it keeps
     # the lock until it actually exits.
@@ -168,16 +167,13 @@ report_if_new() {
     printf '%s' "$new"
     echo "Your clone is already fetched: merge with 'git merge --ff-only @{u}', not 'git pull', which would spend another request."
     echo "This fired the moment the comment was well-formed, so the author may still be typing: before you push, check the comment still reads as above."
-    echo "FIRST start this watcher again (Bash, run_in_background: bash $0), THEN address the comments."
+    echo "Nothing is watching now. Address the comments, push, and start this watcher again (Bash, run_in_background: bash $0) before your turn ends."
     exit 0
 }
 
-now=$(date +%s)
 head_sha=$(git rev-parse '@{u}')
 cur=$(extract)
-changed_at=$now      # when the comment text last changed
-live_at=$now         # when the project last changed; a start counts, since
-                     # the watcher is started when the authors are about to edit
+changed_at=$(date +%s)   # when the comment text last changed
 backoff=0
 
 while true; do
@@ -189,23 +185,18 @@ while true; do
         exit 0
     fi
 
-    now=$(date +%s)
     if (( backoff )); then
         sleep "$backoff"
     elif (( $(spent) >= BUDGET )); then
-        sleep "$SLOW"
-    elif (( now - live_at < HOT )); then
-        sleep "$FAST"
-    elif (( now - live_at < LIVE )); then
-        sleep "$MID"
+        sleep "$EASE"
     else
-        sleep "$SLOW"
+        sleep "$PROBE"
     fi
 
     spend
     probe=$(git ls-remote "$remote" "refs/heads/$branch" 2>&1)
     if grep -qi 'rate-limit\|no git access' <<<"$probe"; then
-        backoff=$(( backoff ? backoff * 2 : SLOW ))
+        backoff=$(( backoff ? backoff * 2 : EASE ))
         (( backoff > 900 )) && backoff=900
         continue
     fi
@@ -213,7 +204,6 @@ while true; do
     sha=${probe%%$'\t'*}
     [[ -z $sha || $sha == "$head_sha" ]] && continue
 
-    live_at=$(date +%s)
     spend
     git fetch -q "$remote" "$branch" 2>/dev/null || continue
     head_sha=$(git rev-parse '@{u}')
