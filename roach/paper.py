@@ -1,4 +1,7 @@
 import math
+import shutil
+import subprocess
+import tempfile
 from importlib.resources import files
 from pathlib import Path
 
@@ -191,6 +194,44 @@ def save_tex(tex, path):
     with open(path, "w") as f:
         f.write(tex)
     print(f"saved at {path}")
+
+
+TABLE_PREAMBLE = r"""\usepackage{times}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{xcolor}"""
+
+
+def table_pdf(tex_path, pdf_path, width_in=LINEWIDTH_IN, preamble=TABLE_PREAMBLE, root=".", pad_pt=2):
+    root = Path(root).resolve()
+    doc = rf"""\documentclass{{article}}
+{preamble}
+\begin{{document}}
+\setbox0\vbox{{\hsize={width_in}in \linewidth=\hsize \centering
+\input{{{Path(tex_path).resolve()}}}\par}}
+\hoffset=-1in \voffset=\dimexpr-1in+{pad_pt}pt\relax
+\pdfpagewidth=\wd0 \pdfpageheight=\dimexpr\ht0+\dp0+{2 * pad_pt}pt\relax
+\shipout\box0
+\end{{document}}
+"""
+    with tempfile.TemporaryDirectory() as tmp:
+        src = Path(tmp) / "table.tex"
+        src.write_text(doc)
+        out = subprocess.run(
+            ["pdflatex", "-interaction=nonstopmode", "-halt-on-error", f"-output-directory={tmp}", str(src)],
+            cwd=root, capture_output=True, text=True,
+        )
+        if out.returncode != 0:
+            raise RuntimeError(f"pdflatex failed on {tex_path}:\n{out.stdout[-3000:]}")
+        Path(pdf_path).parent.mkdir(exist_ok=True, parents=True)
+        shutil.copy(Path(tmp) / "table.pdf", pdf_path)
+    print(f"saved at {pdf_path}")
+
+
+def save_table(tex, path, width_in=LINEWIDTH_IN, preamble=TABLE_PREAMBLE, root="."):
+    save_tex(tex, path)
+    table_pdf(path, Path(path).with_suffix(".pdf"), width_in, preamble, root)
 
 
 def align_tex(tex):

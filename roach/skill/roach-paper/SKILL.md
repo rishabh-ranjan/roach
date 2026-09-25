@@ -164,8 +164,32 @@ paper.html_to_pdf("figures/intro/overview.dc.html", "figures/intro/overview.pdf"
 
 ## C. Tables
 
-Build the table body as a string of `&`-separated rows,
-`paper.align_tex(body)` to column-align the source, `paper.save_tex(tex,
-path)` to write it; the `.tex` `\input`s the body and keeps the caption and
-`tabular` preamble. Numbers come from the same code that makes the figures,
-never typed by hand. Our method's row or name uses the `\ours` macro.
+Every table lives in `tables/`, one generator script per table, and the file
+there is the whole table as the paper typesets it: size command, `\tabcolsep`,
+the `tabular` (or `tabularx`) environment with its column spec, header, rules
+and body. The paper's float keeps only placement, the caption and the label:
+
+```latex
+\begin{table}[t]
+\centering
+\input{tables/train_time}
+\caption{...}
+\label{tab:train_time}
+\end{table}
+```
+
+Build the body as a string of `&`-separated rows, `paper.align_tex(body)` to
+column-align the source, wrap it in the header and rules (human-facing header
+strings in the constants block at the top of the script, as for figures), and
+write it with `paper.save_table(tex, "tables/<name>.tex", width_in=...)`.
+That also compiles `tables/<name>.pdf`: the table alone, typeset at its slot
+width with the paper's fonts, for inspection without building the paper.
+`width_in` is the slot the table sits in (`paper.LINEWIDTH_IN`, or
+`0.49 * paper.LINEWIDTH_IN` for a table in a half-width minipage);
+`preamble` must load what the table uses, usually the project's own macro
+file (`\input{macros}`, resolved from `root`, the paper's directory), so
+`\ours` and the comment macros typeset as in the paper. Commit both files.
+Read the PDF after every change, as for a figure.
+
+Numbers come from the same code that makes the figures, never typed by hand.
+Our method's row or name uses the `\ours` macro.
