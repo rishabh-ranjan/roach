@@ -101,6 +101,25 @@ implements the request.
 
 - If a change forces edits elsewhere (renamed notation, a removed label, the
   appendix), keep those minimal too.
+- Every word you add or change in the paper shows in Claude's color, whether
+  it answers an `@claude` comment or a request made in chat. Wrap it in
+  `\claudefix{}`, which renders teal while comments are on and as plain text
+  when they are off, so nothing needs stripping at submission. The authors
+  accept an edit by unwrapping it. Wrap only your own words, never theirs:
+  the changed phrase, a new sentence or a new paragraph, one wrapper per
+  paragraph since the macro cannot span a blank line. It works inside math
+  and around `\heading{}`, `\ref` and `\cite`; do not put it inside a
+  `\label`, `\cite` key, `\includegraphics` path or environment name, nor around
+  `\begin`/`\end`. For a new figure, table or section, wrap its caption and
+  prose. A pure deletion has nothing to color; the diff says it. If the
+  project lacks the macro, add it beside `\claude{}`, on both sides of the
+  comments switch:
+
+  ```latex
+  \providecommand{\claudefix}[1]{{\color{teal}#1}}   % comments on
+  \providecommand{\claudefix}[1]{#1}                  % comments off
+  ```
+
 - Numbers in the text are checked against the run data, never against other
   prose. When a request is "is this right?", recompute from the CSVs the figure
   scripts read (`gen/`). If the prose is wrong, correct the number; if what is
