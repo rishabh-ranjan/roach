@@ -116,8 +116,9 @@ sizes between figures come from.
 
 ### A2. Chrome
 
-No top or right spines, axis lines and tick marks in `paper.AXIS_GREY` (tick
-labels stay black), no legend frames, no grid unless it carries reading
+No top or right spines; axis lines, tick marks and tick labels all in
+`paper.AXIS_GREY` (dark enough for text, contrast 5.4 on white); short ticks
+(2 pt) with tick labels close to them (1.5 pt pad); no legend frames, no grid unless it carries reading
 value (then 0.5 pt). Data lines 0.75 to 1 pt. `apply()` sets all of these;
 do not override them per figure.
 
