@@ -119,3 +119,33 @@ credits.
 Two one-GPU probe jobs sit queued on `h100-1*` and `h100-1*-spot` as a free
 capacity watcher: they cost nothing while pending and start the moment EC2
 has a node.
+
+## Torn down 2026-09-30
+
+The cluster is deleted. What survives in the account, and what a rebuild needs:
+
+| survives | id | note |
+| --- | --- | --- |
+| FSx Lustre, 1.2 TB | `fs-09245015f32279013` | external storage, ~$5.60/day; holds a stale partial HF download |
+| FSx security group | `sg-04d0f27eb6ae6f0ba` | allows Lustre 988 and 1018-1023 from the VPC; without it a re-attach is refused |
+| private subnets, one per AZ | see `cluster.yaml` | free |
+| private route table | `rtb-003bcc352a9bcae62` | free; its 0.0.0.0/0 route is now dangling |
+
+The NAT gateway and its elastic IP were deleted with the cluster, so a rebuild
+must recreate them first or compute nodes have no internet:
+
+```bash
+set -a; . ~/scratch/.secrets/aws; set +a
+EIP=$(aws ec2 allocate-address --domain vpc --query AllocationId --output text)
+NAT=$(aws ec2 create-nat-gateway --subnet-id subnet-010977c26143e3853 --allocation-id $EIP \
+      --query NatGateway.NatGatewayId --output text)
+aws ec2 wait nat-gateway-available --nat-gateway-ids $NAT
+aws ec2 replace-route --route-table-id rtb-003bcc352a9bcae62 \
+      --destination-cidr-block 0.0.0.0/0 --nat-gateway-id $NAT
+roach/slurm/clusters/aws/pcluster.sh create   # ~20 min
+roach/slurm/clusters/aws/pcluster.sh setup    # prints the new ssh alias
+```
+
+The head node gets a new elastic IP, so update the `aws` entry in
+`~/.ssh/config` (both the AFS and the node-local copy) with the address
+`setup` prints.
