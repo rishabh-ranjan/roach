@@ -122,20 +122,32 @@ has a node.
 
 ## Torn down 2026-09-30
 
-The cluster is deleted. What survives in the account, and what a rebuild needs:
+The cluster and the FSx volume are both deleted; the account now bills nothing.
+The 1.2 TB volume (`fs-09245015f32279013`) held only a partial HF download
+against a superseded dataset revision and stale checkpoint layouts, all
+re-fetchable from the Hub. **A rebuild must start the `the-join-preprocessed`
+download first, not last**: it is a few hundred GB and took days from the head
+node.
+
+What survives in the account, and what a rebuild needs:
 
 | survives | id | note |
 | --- | --- | --- |
-| FSx Lustre, 1.2 TB | `fs-09245015f32279013` | external storage, ~$5.60/day; holds a stale partial HF download |
 | FSx security group | `sg-04d0f27eb6ae6f0ba` | allows Lustre 988 and 1018-1023 from the VPC; without it a re-attach is refused |
 | private subnets, one per AZ | see `cluster.yaml` | free |
 | private route table | `rtb-003bcc352a9bcae62` | free; its 0.0.0.0/0 route is now dangling |
 
-The NAT gateway and its elastic IP were deleted with the cluster, so a rebuild
-must recreate them first or compute nodes have no internet:
+A rebuild must recreate the FSx volume as well as the NAT gateway and its
+elastic IP, then point `SharedStorage` in `cluster.yaml` at the new
+`FileSystemId`:
 
 ```bash
 set -a; . ~/scratch/.secrets/aws; set +a
+export AWS_DEFAULT_REGION=us-east-1
+aws fsx create-file-system --file-system-type LUSTRE --storage-capacity 1200 \
+      --subnet-ids subnet-010977c26143e3853 --security-group-ids sg-04d0f27eb6ae6f0ba \
+      --lustre-configuration DeploymentType=SCRATCH_2 \
+      --query FileSystem.FileSystemId --output text   # put this in cluster.yaml
 EIP=$(aws ec2 allocate-address --domain vpc --query AllocationId --output text)
 NAT=$(aws ec2 create-nat-gateway --subnet-id subnet-010977c26143e3853 --allocation-id $EIP \
       --query NatGateway.NatGatewayId --output text)
