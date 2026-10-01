@@ -161,3 +161,42 @@ roach/slurm/clusters/aws/pcluster.sh setup    # prints the new ssh alias
 The head node gets a new elastic IP, so update the `aws` entry in
 `~/.ssh/config` (both the AFS and the node-local copy) with the address
 `setup` prints.
+
+## Cardinal Cloud move: timing trap (2026-10-01)
+
+Ticket RITM00794840 was filed 2026-09-30 and Stanford sent the Organization
+invitation the same afternoon (handshake `h-9c301391d4f149b09027b44433c0064a`,
+org `o-8iwvd2taf5`, "SU AWS Main", expires **2026-10-15**).
+
+**Do not accept it before the last day of a month.** Dominic Young (AWS), in
+writing on 2026-09-15: "When an account moves mid-month the credits cease to
+apply for the remainder of that month and will start up again the first of the
+month, so we recommend moving the account on the last day of the month."
+Accepting on 1 October would forfeit credit coverage for all of October,
+including the mid-October Capacity Block.
+
+The invitation expires before 31 October, so it has to be re-issued. Asked
+Bruno Velazquez to re-send it on 2026-10-31; the current one is left to lapse.
+
+## Why the quota fight stopped mattering
+
+"Instances in a Capacity Block don't count against your On-Demand Instances
+limits" (EC2 user guide). The Concurrent P5 Capacity Blocks quota is already
+192 vCPUs, i.e. one whole p5.48xlarge, so the 64-vCPU on-demand and spot P
+quotas are irrelevant on this path. The Organization move is now insurance and
+long-term support, not the unblocker.
+
+Blocked only on Amazon enabling fellowship credits for Capacity Blocks; Ellen
+Hermansen, 2026-09-24, "within the next few weeks", no date. Until then a
+purchase bills a personal credit card, so never buy one unprompted.
+
+Live supply is thin. `aws ec2 describe-capacity-block-offerings --instance-type
+p5.48xlarge --instance-count 1 --capacity-duration-hours 48` returned exactly
+one offering on both 09-30 and 10-01: us-east-1f starting 2026-10-17, $1993.34
+upfront ($41.53/h for all eight H100s). A 262-GPU-hour pretrain is ~33 h wall
+clock, so a 48 h block covers it.
+
+The dataset download is the critical path, not the cluster: a few hundred GB
+that took days from the head node. Rebuild and start the fetch ~4 days before
+the block begins, at ~$7/day.
+
