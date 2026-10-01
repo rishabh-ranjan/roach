@@ -72,6 +72,11 @@ job 13 onwards is `il-lo` and preemptible (GraceTime 300s). `il`'s two b200
 are a separate sub-cap, not a slice of the ten — spending them costs 2 of the
 10 as well.
 
+**blackwell1 caps cpus per gpu at 34.** A job asking for more is rejected at
+submit time (`36 CPUs for 1 b200 GPU(s) per node exceeds the limit of 34 CPUs
+per GPU`), so a per-gpu task that wants a full slice asks for 34, and a
+whole-node job scales it by the gpu count.
+
 **Priority buys the next card that frees, not a card.** A high-priority job
 outranks every `il-lo` job in the queue, but it cannot take a card from a
 running non-preemptible one — and `il` and `il-interactive` jobs are exactly
