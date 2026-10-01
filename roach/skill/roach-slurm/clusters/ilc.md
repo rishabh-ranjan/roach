@@ -75,7 +75,11 @@ are a separate sub-cap, not a slice of the ten — spending them costs 2 of the
 **blackwell1 caps cpus per gpu at 34.** A job asking for more is rejected at
 submit time (`36 CPUs for 1 b200 GPU(s) per node exceeds the limit of 34 CPUs
 per GPU`), so a per-gpu task that wants a full slice asks for 34, and a
-whole-node job scales it by the gpu count.
+whole-node job scales it by the gpu count. Asking for node memory with
+`--mem` breaks this a second way: the partition's `MaxMemPerCPU=10700M` makes
+slurm raise the cpu count to cover the request, so `--mem=375000M` is rejected
+as 36 cpus even when `cpus_per_task=34`. Request `mem_per_gpu` on blackwell
+and leave `mem` unset.
 
 **Priority buys the next card that frees, not a card.** A high-priority job
 outranks every `il-lo` job in the queue, but it cannot take a card from a
