@@ -175,8 +175,10 @@ month, so we recommend moving the account on the last day of the month."
 Accepting on 1 October would forfeit credit coverage for all of October,
 including the mid-October Capacity Block.
 
-The invitation expires before 31 October, so it has to be re-issued. Asked
-Bruno Velazquez to re-send it on 2026-10-31; the current one is left to lapse.
+The invitation expires before 31 October, so it has to be re-issued. Bruno
+Velazquez agreed on 2026-10-01: **he will re-send the invitation on 30 October
+and the ticket stays open until the move is done; accept it on 31 October.**
+The 2026-10-15 handshake is being left to lapse on purpose.
 
 ## Why the quota fight stopped mattering
 
