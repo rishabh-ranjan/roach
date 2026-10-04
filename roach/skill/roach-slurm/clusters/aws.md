@@ -192,11 +192,21 @@ Blocked only on Amazon enabling fellowship credits for Capacity Blocks; Ellen
 Hermansen, 2026-09-24, "within the next few weeks", no date. Until then a
 purchase bills a personal credit card, so never buy one unprompted.
 
-Live supply is thin. `aws ec2 describe-capacity-block-offerings --instance-type
-p5.48xlarge --instance-count 1 --capacity-duration-hours 48` returned exactly
-one offering on both 09-30 and 10-01: us-east-1f starting 2026-10-17, $1993.34
-upfront ($41.53/h for all eight H100s). A 262-GPU-hour pretrain is ~33 h wall
-clock, so a 48 h block covers it.
+Live supply is thin and it moves. `aws ec2 describe-capacity-block-offerings
+--instance-type p5.48xlarge --instance-count 1 --capacity-duration-hours 48`
+returns exactly one offering at a time, always us-east-1f, at a flat $41.53/h
+for all eight H100s ($996.67 per 24 h). The start date slides as blocks are
+taken:
+
+| checked | earliest p5.48xlarge start |
+| --- | --- |
+| 2026-09-30 .. 10-03 | 2026-10-17 |
+| 2026-10-04 | 2026-10-25 |
+
+So the window is not a shelf item: it drifted eight days in one night, and 96 h
+blocks already start 2026-11-12. A 262-GPU-hour pretrain is ~33 h wall clock,
+so a 48 h block covers it. p5.4xlarge (1 GPU) blocks are far easier to get,
+2026-10-14 at $249.17 for 48 h, useful for a plumbing test but not the run.
 
 The dataset download is the critical path, not the cluster: a few hundred GB
 that took days from the head node. Rebuild and start the fetch ~4 days before
