@@ -4,7 +4,7 @@ Image:
 HeadNode:
   InstanceType: t3.medium
   Networking:
-    SubnetId: subnet-010977c26143e3853
+    SubnetId: SUBNET_ID
     ElasticIp: true
   Ssh:
     KeyName: roach
@@ -27,7 +27,7 @@ Scheduling:
           Efa:
             Enabled: true
       Networking:
-        SubnetIds: [subnet-0dc57517de388c39b]
+        SubnetIds: [SUBNET_US_EAST_1D]
         PlacementGroup:
           Enabled: true
     - Name: h100-spot
@@ -40,7 +40,7 @@ Scheduling:
           Efa:
             Enabled: true
       Networking:
-        SubnetIds: [subnet-0dc57517de388c39b]
+        SubnetIds: [SUBNET_US_EAST_1D]
         PlacementGroup:
           Enabled: true
     - Name: a100
@@ -53,7 +53,7 @@ Scheduling:
           Efa:
             Enabled: true
       Networking:
-        SubnetIds: [subnet-0dc57517de388c39b]
+        SubnetIds: [SUBNET_US_EAST_1D]
         PlacementGroup:
           Enabled: true
     - Name: a100-spot
@@ -66,7 +66,7 @@ Scheduling:
           Efa:
             Enabled: true
       Networking:
-        SubnetIds: [subnet-0dc57517de388c39b]
+        SubnetIds: [SUBNET_US_EAST_1D]
         PlacementGroup:
           Enabled: true
     # One queue per AZ: p5.4xlarge capacity comes and goes per zone, and a
@@ -84,7 +84,7 @@ Scheduling:
           Efa:
             Enabled: true
       Networking:
-        SubnetIds: [subnet-0dc57517de388c39b]
+        SubnetIds: [SUBNET_US_EAST_1D]
         PlacementGroup:
           Enabled: true
     - Name: h100-1a
@@ -97,7 +97,7 @@ Scheduling:
           Efa:
             Enabled: true
       Networking:
-        SubnetIds: [subnet-0cfd373935a7e13fe]
+        SubnetIds: [SUBNET_US_EAST_1A]
         PlacementGroup:
           Enabled: true
     - Name: h100-1b
@@ -110,7 +110,7 @@ Scheduling:
           Efa:
             Enabled: true
       Networking:
-        SubnetIds: [subnet-09ef36bfe992170fc]
+        SubnetIds: [SUBNET_US_EAST_1B]
         PlacementGroup:
           Enabled: true
     - Name: h100-1c
@@ -123,7 +123,7 @@ Scheduling:
           Efa:
             Enabled: true
       Networking:
-        SubnetIds: [subnet-05346e680b6132946]
+        SubnetIds: [SUBNET_US_EAST_1C]
         PlacementGroup:
           Enabled: true
     - Name: h100-1e
@@ -136,7 +136,7 @@ Scheduling:
           Efa:
             Enabled: true
       Networking:
-        SubnetIds: [subnet-0f561dd1c8d8cec64]
+        SubnetIds: [SUBNET_US_EAST_1E]
         PlacementGroup:
           Enabled: true
     - Name: h100-1f
@@ -149,7 +149,7 @@ Scheduling:
           Efa:
             Enabled: true
       Networking:
-        SubnetIds: [subnet-08826319e60b90dfb]
+        SubnetIds: [SUBNET_US_EAST_1F]
         PlacementGroup:
           Enabled: true
     # The same p5.4xlarge as spot: a separate capacity pool from on-demand, and
@@ -164,7 +164,7 @@ Scheduling:
           Efa:
             Enabled: true
       Networking:
-        SubnetIds: [subnet-0dc57517de388c39b]
+        SubnetIds: [SUBNET_US_EAST_1D]
         PlacementGroup:
           Enabled: true
     - Name: h100-1a-spot
@@ -177,7 +177,7 @@ Scheduling:
           Efa:
             Enabled: true
       Networking:
-        SubnetIds: [subnet-0cfd373935a7e13fe]
+        SubnetIds: [SUBNET_US_EAST_1A]
         PlacementGroup:
           Enabled: true
     - Name: h100-1b-spot
@@ -190,7 +190,7 @@ Scheduling:
           Efa:
             Enabled: true
       Networking:
-        SubnetIds: [subnet-09ef36bfe992170fc]
+        SubnetIds: [SUBNET_US_EAST_1B]
         PlacementGroup:
           Enabled: true
     - Name: h100-1c-spot
@@ -203,7 +203,7 @@ Scheduling:
           Efa:
             Enabled: true
       Networking:
-        SubnetIds: [subnet-05346e680b6132946]
+        SubnetIds: [SUBNET_US_EAST_1C]
         PlacementGroup:
           Enabled: true
     - Name: h100-1e-spot
@@ -216,7 +216,7 @@ Scheduling:
           Efa:
             Enabled: true
       Networking:
-        SubnetIds: [subnet-0f561dd1c8d8cec64]
+        SubnetIds: [SUBNET_US_EAST_1E]
         PlacementGroup:
           Enabled: true
     - Name: h100-1f-spot
@@ -229,7 +229,7 @@ Scheduling:
           Efa:
             Enabled: true
       Networking:
-        SubnetIds: [subnet-08826319e60b90dfb]
+        SubnetIds: [SUBNET_US_EAST_1F]
         PlacementGroup:
           Enabled: true
     - Name: a10g
@@ -240,10 +240,10 @@ Scheduling:
           MinCount: 0
           MaxCount: 1
       Networking:
-        SubnetIds: [subnet-0dc57517de388c39b]
+        SubnetIds: [SUBNET_US_EAST_1D]
 SharedStorage:
   - Name: fsx
     StorageType: FsxLustre
     MountDir: /fsx
     FsxLustreSettings:
-      FileSystemId: fs-09245015f32279013
+      FileSystemId: FSX_FILESYSTEM_ID
