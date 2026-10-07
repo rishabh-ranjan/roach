@@ -1,6 +1,6 @@
 ---
 name: roach-overleaf
-description: Habits for editing a paper in a local clone of an Overleaf project (origin is git.overleaf.com) — pull before editing, build, commit and push after each change, and a watcher that picks up `@claude` comments as collaborators leave them. Use before and after any edit to the paper sources of such a clone, and whenever syncing with Overleaf comes up.
+description: Habits for editing a paper in a local clone of an Overleaf project (origin is git.overleaf.com) — pull before editing, build, commit and push after each change, and a watcher that picks up `\cc{}` comments as collaborators leave them. Use before and after any edit to the paper sources of such a clone, and whenever syncing with Overleaf comes up.
 ---
 
 # roach overleaf
@@ -55,7 +55,7 @@ keys differing only in case, which aborts bibtex for the whole document.
 **Nobody reads your chat replies.** The paper is the only channel, and it is a
 channel you use almost never.
 
-A `\claude{}` note answers one thing only: an `@claude` ask you could not carry
+A `\claude{}` note answers one thing only: a `\cc{}` ask you could not carry
 out as written. Nothing else earns a note. Not a fix, not a caveat you can live
 with, not anything you already did.
 
@@ -67,8 +67,7 @@ them, then **a few words**. Not a sentence, not an explanation, not an apology:
 \claude{@rishabh no cite for data agents}
 ```
 
-The watcher names the author of each comment it reports. For an `@claude` inside
-someone's own macro (`\rishabh{@claude ...}`), that macro names them instead.
+The watcher names the author of each comment it reports.
 
 Everything else is silence. A typo you corrected, a build you unbroke, a
 comment you carried out, a merge you resolved: the diff already says it. Adding
@@ -102,7 +101,7 @@ implements the request.
 - If a change forces edits elsewhere (renamed notation, a removed label, the
   appendix), keep those minimal too.
 - Every word you add or change in the paper shows in Claude's color, whether
-  it answers an `@claude` comment or a request made in chat. Wrap it in
+  it answers a `\cc{}` comment or a request made in chat. Wrap it in
   `\claudefix{}`, which renders teal while comments are on and as plain text
   when they are off, so nothing needs stripping at submission. The authors
   accept an edit by unwrapping it. Wrap only your own words, never theirs:
@@ -125,11 +124,16 @@ implements the request.
   scripts read (`gen/`). If the prose is wrong, correct the number; if what is
   wrong is the claim around it, reply to the asker in a few words.
 
-## `@claude` comments
+## `\cc{}` comments
 
-Requests arrive inside the authors' comment macros, e.g.
-`\rishabh{@claude remove enumerate}`, or bare as `@claude{...}`. Any
-capitalization counts (`@Claude`).
+Requests arrive in the `\cc{}` macro, e.g. `\cc{remove enumerate}`. If the
+project lacks it, add it beside the authors' own comment macros, on both sides
+of whatever switch hides comments at submission:
+
+```latex
+\newcommand{\cc}[1]{\textcolor{teal}{(\textbf{cc:} #1)}}   % comments on
+\newcommand{\cc}[1]{}                                       % comments off
+```
 
 Only when the human explicitly asks to watch for comments, start the watcher as
 a Bash command with `run_in_background`, from the repo root. Never start it

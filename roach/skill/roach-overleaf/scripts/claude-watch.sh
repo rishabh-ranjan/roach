@@ -1,5 +1,5 @@
 #!/bin/bash
-# Watch an Overleaf clone for @claude comments and exit as soon as one settles.
+# Watch an Overleaf clone for \cc{} comments and exit as soon as one settles.
 #
 # Pacing: one cheap ls-remote probe every couple of seconds asks whether
 # anything changed; only a change costs a real fetch. There is no slow tier,
@@ -106,37 +106,24 @@ extract() {
 import re, sys
 f = sys.argv[1]
 s = sys.stdin.read()
-for m in re.finditer(r"@claude", s, re.I):
+for m in re.finditer(r"\\cc(?![A-Za-z])", s):
     i = m.end()
     while i < len(s) and s[i] == " ":
         i += 1
-    if i < len(s) and s[i] == "{":
-        # @claude{...}: the comment is the balanced group.
+    if i >= len(s) or s[i] != "{":
+        continue
+    # \cc{...}: the comment is the balanced group.
+    i += 1
+    start, depth = i, 1
+    while i < len(s) and depth:
+        if s[i] == "{":
+            depth += 1
+        elif s[i] == "}":
+            depth -= 1
         i += 1
-        start, depth = i, 1
-        while i < len(s) and depth:
-            if s[i] == "{":
-                depth += 1
-            elif s[i] == "}":
-                depth -= 1
-            i += 1
-        if depth:
-            continue
-        end = i - 1
-    else:
-        # \rishabh{@claude ...}: the comment runs to the end of the macro.
-        start, depth = i, 0
-        while i < len(s):
-            if s[i] == "{":
-                depth += 1
-            elif s[i] == "}":
-                if not depth:
-                    break
-                depth -= 1
-            i += 1
-        else:
-            continue
-        end = i
+    if depth:
+        continue
+    end = i - 1
     body = " ".join(s[start:end].split())
     if body:
         print(f"{f}\t{s.count(chr(10), 0, m.start()) + 1}\t{body}")
