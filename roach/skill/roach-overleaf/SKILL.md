@@ -80,7 +80,7 @@ If the project has no such macro, add one beside the authors' own comment macros
 (`\liana{}`, `\rishabh{}`), honoring whatever switch hides them at submission:
 
 ```latex
-\providecommand{\claude}[1]{{\color{teal}{/* claude: #1 */}}}
+\providecommand{\claude}[1]{{\color{orange}{/* claude: #1 */}}}
 ```
 
 ## Editing collaborators' text
@@ -102,7 +102,7 @@ implements the request.
   appendix), keep those minimal too.
 - Every word you add or change in the paper shows in Claude's color, whether
   it answers a `\cc{}` comment or a request made in chat. Wrap it in
-  `\claudefix{}`, which renders teal while comments are on and as plain text
+  `\claudefix{}`, which renders orange while comments are on and as plain text
   when they are off, so nothing needs stripping at submission. The authors
   accept an edit by unwrapping it. Wrap only your own words, never theirs:
   the changed phrase, a new sentence or a new paragraph, one wrapper per
@@ -115,7 +115,7 @@ implements the request.
   comments switch:
 
   ```latex
-  \providecommand{\claudefix}[1]{{\color{teal}#1}}   % comments on
+  \providecommand{\claudefix}[1]{{\color{orange}#1}}   % comments on
   \providecommand{\claudefix}[1]{#1}                  % comments off
   ```
 
@@ -131,7 +131,7 @@ project lacks it, add it beside the authors' own comment macros, on both sides
 of whatever switch hides comments at submission:
 
 ```latex
-\newcommand{\cc}[1]{\textcolor{teal}{(\textbf{cc:} #1)}}   % comments on
+\newcommand{\cc}[1]{\textcolor{orange}{(\textbf{cc:} #1)}}   % comments on
 \newcommand{\cc}[1]{}                                       % comments off
 ```
 
