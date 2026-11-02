@@ -1,5 +1,5 @@
 """Marlowe (Stanford's DGX H100 SuperPOD): partitions `preempt` / `batch`,
-qos `normal` / `medium`, accounts `marlowe-m000137` / `marlowe-m000137-pm06`.
+qos `normal` / `medium`, accounts `marlowe-m000137` / `marlowe-m000137-pm07`.
 
 Every node is the same: 8 x H100-80G, 112 cores, 1950000M. The presets are
 the two ways a job gets there; which to spend is the human's instruction,
@@ -26,7 +26,7 @@ MARLOWE = Cluster(
 
 H100 = Resources(
     partition="batch",
-    account="marlowe-m000137-pm06",  # the metered allocation: GPU-hours, shared by the group
+    account="marlowe-m000137-pm07",  # the metered allocation: GPU-hours, shared by the group
     qos="medium",
     time="2-00:00:00",  # the partition's MaxTime; a run that checkpoints requeues through it
     gpus="8",

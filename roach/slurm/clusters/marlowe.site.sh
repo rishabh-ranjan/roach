@@ -8,7 +8,7 @@
 
 site_detect() { [[ -d /marlowe ]]; }
 NODE_HOME=/users/$USER
-SCRATCH=/scratch/m000137-pm06/$USER
+SCRATCH=/scratch/m000137-pm07/$USER
 # A batch script's PATH has no slurm and no slurm.conf; the script needs
 # srun, scancel and scontrol.
 SLURM_BIN=/cm/shared/apps/slurm/current/bin

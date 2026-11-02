@@ -31,7 +31,7 @@ hanging ssh.
 | path | what | use for |
 | --- | --- | --- |
 | `~` = `/users/$USER` | shared NFS home, a dotfiles checkout, small quota | nothing of size |
-| `~/scratch` -> `/scratch/m000137-pm06/$USER` | Lustre, the allocation's 40 T / 12 M inodes | logs, checkpoints, data, `~/.cache`, `~/roach_clones` |
+| `~/scratch` -> `/scratch/m000137-pm07/$USER` | Lustre, the allocation's 5 T / 512 k inodes | logs, checkpoints, data, `~/.cache`, `~/roach_clones` |
 | `/local_scratch/$USER.$SLURM_JOB_ID` | per-job dir on the node's 28 T NVMe, deleted by the epilog | `TMPDIR`, set by the env; nothing that outlives the job |
 | `/tmp`, `/local` | the node's root disk, routinely full | never |
 
@@ -46,10 +46,10 @@ after the ranks started. Those are the expected gaps in a log, not stalls.
 | partition | qos | account | max time | max nodes | preemption |
 | --- | --- | --- | --- | --- | --- |
 | `preempt` | `normal` | `marlowe-m000137` | 12 h | unlimited | requeued with 900 s grace whenever `batch`/`hero` wants the node; at most 96 GPUs per account |
-| `batch` | `medium` | `marlowe-m000137-pm06` | 2 d | 16 | none; billed |
+| `batch` | `medium` | `marlowe-m000137-pm07` | 2 d | 16 | none; billed |
 | `hero` | `large` | (none of ours) | 30 d | 31 | — |
 
-A `pm06` job on `preempt` is still billed. `batch` does not preempt
+A `pm07` job on `preempt` is still billed. `batch` does not preempt
 `preempt` jobs of the same user any differently: a `preempt` job of yours is
 requeued at any moment, **including after it has finished its work and
 before the batch script exits** — `Restarts>0` with `PENDING` is a job that
@@ -59,7 +59,7 @@ it if it is done.
 The allocation is one pool, no per-user caps, first come first served:
 
 ```
-$M sshare -A marlowe-m000137-pm06 -l -n -o Account,GrpTRESMins,GrpTRESRaw%200 | head -1   # gres/gpu= minutes: limit, used
+$M sshare -A marlowe-m000137-pm07 -l -n -o Account,GrpTRESMins,GrpTRESRaw%200 | head -1   # gres/gpu= minutes: limit, used
 ```
 
 `AssocGrpGRESMinutes` as a pending reason means the pool is spent.
@@ -71,7 +71,7 @@ $M squeue -u $USER -o "%.8i %.30j %.10P %.9T %.10M %R"        # yours, with reas
 $M sinfo -p batch -o "%P %D %C %t"                              # what is up
 $M squeue -p batch,preempt -h -o "%P %T" | sort | uniq -c       # queue depth
 $M scontrol show res                                            # maintenance reservations
-$M sbatch --test-only -A marlowe-m000137-pm06 -p batch -N 1 --gpus=8 -c 112 -t 2-00:00:00 x.sh   # planned start
+$M sbatch --test-only -A marlowe-m000137-pm07 -p batch -N 1 --gpus=8 -c 112 -t 2-00:00:00 x.sh   # planned start
 ```
 
 Both partitions are contended: an 8-GPU `batch` job has been quoted ~8 h out,
