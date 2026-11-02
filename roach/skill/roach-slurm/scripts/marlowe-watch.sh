@@ -18,9 +18,9 @@ round() {
     q=$($M squeue -u '$USER' -h -o '"%i %j %P %T %M %R"') || { echo "$(date +%T) ssh failed: is the ControlMaster up? (ssh -O check marlowe)"; return; }
     [[ -z $q ]] && { echo "$(date +%T) queue empty: watch over"; exit 0; }
     pend=$(echo "$q" | grep -c PENDING)
-    left=$($M sshare -A marlowe-m000137-pm06 -l -n -o GrpTRESMins,GrpTRESRaw%200 | head -1 |
+    left=$($M sshare -A marlowe-m000137-pm07 -l -n -o GrpTRESMins,GrpTRESRaw%200 | head -1 |
            awk '{match($1,/gres\/gpu=[0-9]+/); l=substr($1,RSTART+9,RLENGTH-9); match($2,/gres\/gpu=[0-9]+/); u=substr($2,RSTART+9,RLENGTH-9); printf "%d", (l-u)/60}')
-    (( left < 500 )) && state+="BUDGET: ${left} GPU-h left on pm06\n"
+    (( left < 500 )) && state+="BUDGET: ${left} GPU-h left on pm07\n"
     while read -r id name part st el reason; do
         case "$reason" in
             *AssocGrp*|*QOSMax*|*PartitionTimeLimit*|*Held*|*requeued*|*DependencyNever*)
@@ -40,7 +40,7 @@ round() {
         prev=$state
     fi
     if (( $(date +%s) - last_beat >= 900 )); then
-        echo "$(date +%T) heartbeat: $(echo "$q" | wc -l) jobs, $pend pending, ${left} GPU-h left on pm06"
+        echo "$(date +%T) heartbeat: $(echo "$q" | wc -l) jobs, $pend pending, ${left} GPU-h left on pm07"
         last_beat=$(date +%s)
     fi
 }
