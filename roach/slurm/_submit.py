@@ -365,6 +365,7 @@ def hold(
     cluster: Cluster,
     name: str,
     log_root: Path | str,
+    idle_exit_secs: int | None = None,
 ) -> str:
     """Queue a job that holds ``resources`` and does nothing, and return its id.
 
@@ -373,6 +374,12 @@ def hold(
     cluster again. It holds the cards whether or not anything runs in it, so
     cancel it the moment the iteration is over. Its wall clock is
     ``resources.time``; steps die with it.
+
+    ``idle_exit_secs`` releases the allocation once no step has run in it for
+    that long -- since it started, or since its last step ended -- instead of
+    holding it until ``resources.time``. Such a hold waits out SIGTERM while a
+    step runs, so preemption's grace goes to the step's checkpoint instead of
+    ending the job under it.
     """
     log_root = home(log_root)
     log = f"{log_root}/hold_{name}_%j.out"
@@ -383,10 +390,32 @@ def hold(
         "--export=NONE",
         f"--output={log}",
         f"--error={log}",
-        "--wrap", "'sleep infinity'",
     ]
+    script = None
+    if idle_exit_secs is None:
+        flags += ["--wrap", "'sleep infinity'"]
+    else:
+        # The site file says where slurm lives; a batch script's PATH may not.
+        # A step is numbered (<id>.0); .batch and .extern are the hold itself.
+        script = "#!/bin/bash\n" + cluster.site.read_text() + rf"""
+export PATH=${{SLURM_BIN:+$SLURM_BIN:}}/usr/bin:/bin
+stop=0
+trap 'stop=1' TERM
+last=$(date +%s)
+while :; do
+    sleep 30 & wait $!
+    if steps=$(squeue -h -s -j "$SLURM_JOB_ID" -o %i) && ! grep -q -E '\.[0-9]+$' <<< "$steps"; then
+        if (( stop || $(date +%s) - last >= {idle_exit_secs} )); then
+            echo "hold: no step for $(( $(date +%s) - last ))s, releasing"
+            exit 0
+        fi
+    else
+        last=$(date +%s)
+    fi
+done
+"""
     on_cluster(cluster, f'mkdir -p "{log_root}"')
-    out = on_cluster(cluster, "sbatch " + " ".join(flags))
+    out = on_cluster(cluster, "sbatch " + " ".join(flags), stdin=script)
     job_id = out.split()[-1]
     print(f"hold-{name}: job {job_id}  ({resources.nodes} node(s), {resources.time})")
     return job_id
