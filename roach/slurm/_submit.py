@@ -379,7 +379,8 @@ def hold(
     that long -- since it started, or since its last step ended -- instead of
     holding it until ``resources.time``. Such a hold waits out SIGTERM while a
     step runs, so preemption's grace goes to the step's checkpoint instead of
-    ending the job under it.
+    ending the job under it. SIGUSR2 to its batch step
+    (``scancel --signal=USR2 --batch <id>``) restarts the idle clock.
     """
     log_root = home(log_root)
     log = f"{log_root}/hold_{name}_%j.out"
@@ -401,6 +402,7 @@ def hold(
 export PATH=${{SLURM_BIN:+$SLURM_BIN:}}/usr/bin:/bin
 stop=0
 trap 'stop=1' TERM
+trap 'last=$(date +%s); echo "hold: USR2 at $(date +%T), idle clock restarted"' USR2
 last=$(date +%s)
 while :; do
     sleep 30 & wait $!
